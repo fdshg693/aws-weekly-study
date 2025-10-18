@@ -1,0 +1,94 @@
+# 発展バージョン：CloudFront キャッシュ無効化
+#
+# 概念：
+# - デプロイ時にCloudFrontキャッシュをクリア
+# - 新しいコンテンツをすぐに配信
+# - ライフサイクルトリガーでの自動実行
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFront cache invalidation setup'
+
+Parameters:
+  DistributionId:
+    Type: String
+    Description: CloudFront Distribution ID
+  
+  InvalidationPaths:
+    Type: String
+    Default: '/*'
+    Description: Paths to invalidate (comma-separated, e.g., /index.html,/styles/*,/js/*)
+
+Resources:
+  # CloudFront キャッシュ無効化用Lambda実行ロール
+  CacheInvalidationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CloudFrontInvalidatePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'cloudfront:CreateInvalidation'
+                Resource: '*'
+
+  # キャッシュ無効化用Lambda関数
+  CacheInvalidationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: cloudfront-cache-invalidation
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt CacheInvalidationRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          
+          cloudfront = boto3.client('cloudfront')
+          
+          def lambda_handler(event, context):
+              distribution_id = event.get('DistributionId')
+              paths = event.get('Paths', ['/*'])
+              
+              try:
+                  response = cloudfront.create_invalidation(
+                      DistributionId=distribution_id,
+                      InvalidationBatch={
+                          'Paths': {
+                              'Quantity': len(paths),
+                              'Items': paths
+                          },
+                          'CallerReference': str(int(time.time()))
+                      }
+                  )
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps({
+                          'message': 'Invalidation created',
+                          'Id': response['Invalidation']['Id']
+                      })
+                  }
+              except Exception as e:
+                  return {
+                      'statusCode': 500,
+                      'body': json.dumps({'error': str(e)})
+                  }
+
+Outputs:
+  CacheInvalidationFunctionArn:
+    Description: Lambda function ARN for cache invalidation
+    Value: !GetAtt CacheInvalidationFunction.Arn
+  CacheInvalidationRoleArn:
+    Description: IAM role ARN for cache invalidation
+    Value: !GetAtt CacheInvalidationRole.Arn

@@ -1,0 +1,53 @@
+# 基本バージョン：シンプルな単一ページサイト用S3バケット
+# 
+# 概念：
+# - パブリックアクセス可能なS3バケット作成
+# - 静的ウェブサイトホスティング有効化
+# - インデックスドキュメント（index.html）指定
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Basic S3 bucket for static website hosting'
+
+Resources:
+  # S3バケット作成
+  StaticWebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'static-website-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration:
+        Status: Enabled
+      WebsiteConfiguration:
+        IndexDocument: index.html
+
+  # パブリックアクセスブロック解除
+  # （注：本番環境ではCloudFrontを経由することを推奨）
+  PublicAccessBlockConfiguration:
+    Type: AWS::S3::BucketPublicAccessBlock
+    Properties:
+      BucketName: !Ref StaticWebsiteBucket
+      BlockPublicAcls: false
+      BlockPublicPolicy: false
+      IgnorePublicAcls: false
+      RestrictPublicBuckets: false
+
+  # バケットポリシー：すべてのユーザーが読み取り可能
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StaticWebsiteBucket
+      PolicyText:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicRead
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Sub '${StaticWebsiteBucket.Arn}/*'
+
+Outputs:
+  WebsiteURL:
+    Description: S3 Static Website URL
+    Value: !GetAtt StaticWebsiteBucket.WebsiteURL
+  BucketName:
+    Description: S3 Bucket Name
+    Value: !Ref StaticWebsiteBucket

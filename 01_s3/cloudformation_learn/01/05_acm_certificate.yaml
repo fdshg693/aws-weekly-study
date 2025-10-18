@@ -1,0 +1,61 @@
+# 発展バージョン：ACM SSL/TLS証明書設定
+#
+# 概念：
+# - AWS Certificate Manager（ACM）で証明書取得
+# - CloudFrontでHTTPS有効化
+# - 自動更新対応
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ACM SSL/TLS certificate for custom domain'
+
+Parameters:
+  DomainName:
+    Type: String
+    Description: Primary domain name (e.g., example.com)
+  
+  IncludeWwwDomain:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Include www subdomain in certificate
+
+Conditions:
+  AddWwwDomain: !Equals [!Ref IncludeWwwDomain, 'true']
+
+Resources:
+  # SSL/TLS証明書リクエスト
+  SslCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      SubjectAlternativeNames:
+        - !If
+          - AddWwwDomain
+          - !Sub 'www.${DomainName}'
+          - !Ref AWS::NoValue
+      # ワイルドカードドメイン設定も可能
+      # DomainName: !Ref DomainName
+      # SubjectAlternativeNames:
+      #   - !Sub '*.${DomainName}'
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          ValidationDomain: !Ref DomainName
+        - !If
+          - AddWwwDomain
+          - DomainName: !Sub 'www.${DomainName}'
+            ValidationDomain: !Ref DomainName
+          - !Ref AWS::NoValue
+      Tags:
+        - Key: Name
+          Value: !Sub '${DomainName}-certificate'
+
+Outputs:
+  CertificateArn:
+    Description: ACM Certificate ARN (use with CloudFront)
+    Value: !Ref SslCertificate
+    Export:
+      Name: !Sub '${AWS::StackName}-CertificateArn'
+  CertificateDomain:
+    Description: Certificate Domain Name
+    Value: !Ref DomainName

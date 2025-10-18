@@ -1,0 +1,90 @@
+# 発展バージョン：CloudFront + ACM SSL/TLS統合
+#
+# 概念：
+# - CloudFrontディストリビューション（CDN）設定
+# - S3をOriginとして指定
+# - キャッシング戦略設定
+# - OAI（Origin Access Identity）でS3への直接アクセスを制限
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Advanced S3 with CloudFront CDN distribution'
+
+Parameters:
+  DomainName:
+    Type: String
+    Description: Custom domain name (optional for basic setup)
+    Default: ''
+
+Resources:
+  # CloudFront用のOrigin Access Identity
+  # 直接S3へのアクセスを防ぎ、CloudFrontのみがアクセス可能に
+  OriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: OAI for static website
+
+  # S3バケット：CloudFront向け
+  StaticWebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'static-website-advanced-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration:
+        Status: Enabled
+      # CloudFront経由でのみアクセスするため、ウェブサイトホスティングは不要
+      #（ただしOriginとして機能させるため、バケット自体は必要）
+
+  # S3バケットポリシー：CloudFrontからのみアクセス許可
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StaticWebsiteBucket
+      PolicyText:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: CloudFrontAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${OriginAccessIdentity}'
+            Action: 's3:GetObject'
+            Resource: !Sub '${StaticWebsiteBucket.Arn}/*'
+
+  # CloudFrontディストリビューション
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        HttpVersion: http2and3
+        Comment: CDN for static website
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt StaticWebsiteBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${OriginAccessIdentity}'
+        DefaultCacheBehavior:
+          # キャッシング戦略：管理キャッシュポリシーを使用
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # Managed-CachingOptimized
+          ViewerProtocolPolicy: redirect-to-https
+          TargetOriginId: S3Origin
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          Compress: true
+        # HTTPS設定（カスタムドメイン指定時）
+        # ViewerCertificate:
+        #   AcmCertificateArn: !Sub 'arn:aws:acm:us-east-1:${AWS::AccountId}:certificate/xxxxx'
+        #   SslSupportMethod: sni-only
+        #   MinimumProtocolVersion: TLSv1.2_2021
+
+Outputs:
+  CloudFrontDomainName:
+    Description: CloudFront distribution domain name
+    Value: !GetAtt CloudFrontDistribution.DomainName
+  DistributionId:
+    Description: CloudFront Distribution ID (for cache invalidation)
+    Value: !Ref CloudFrontDistribution
+  BucketName:
+    Description: S3 Origin Bucket Name
+    Value: !Ref StaticWebsiteBucket

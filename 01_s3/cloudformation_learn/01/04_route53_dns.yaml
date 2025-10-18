@@ -1,0 +1,81 @@
+# 発展バージョン：Route53 DNSレコード設定
+#
+# 概念：
+# - CloudFrontをカスタムドメインに接続
+# - AレコードでCloudFrontエイリアス設定
+# - www付きドメインの統一設定
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Route53 DNS configuration for CloudFront'
+
+Parameters:
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID
+  
+  DomainName:
+    Type: String
+    Description: Domain name (e.g., example.com)
+  
+  CloudFrontDomainName:
+    Type: String
+    Description: CloudFront distribution domain name
+
+Resources:
+  # AレコードでCloudFrontにエイリアス設定
+  # example.com -> CloudFront
+  DomainARecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !Ref CloudFrontDomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # CloudFront Fixed Hosted Zone ID
+        EvaluateTargetHealth: false
+
+  # www付きドメイン用Aレコード
+  # www.example.com -> CloudFront
+  WwwDomainARecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub 'www.${DomainName}'
+      Type: A
+      AliasTarget:
+        DNSName: !Ref CloudFrontDomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+        EvaluateTargetHealth: false
+
+  # AAAA レコード（IPv6対応）
+  DomainAAAARecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: AAAA
+      AliasTarget:
+        DNSName: !Ref CloudFrontDomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+        EvaluateTargetHealth: false
+
+  # www付きAAAAレコード
+  WwwDomainAAAARecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub 'www.${DomainName}'
+      Type: AAAA
+      AliasTarget:
+        DNSName: !Ref CloudFrontDomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+        EvaluateTargetHealth: false
+
+Outputs:
+  DomainRecordName:
+    Description: Domain A Record
+    Value: !Ref DomainARecord
+  WwwDomainRecordName:
+    Description: WWW Domain A Record
+    Value: !Ref WwwDomainARecord

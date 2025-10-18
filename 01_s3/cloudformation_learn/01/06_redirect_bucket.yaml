@@ -1,0 +1,57 @@
+# 発展バージョン：リダイレクト用S3バケット
+#
+# 概念：
+# - www.example.com と example.com のURL統一
+# - 一方を他方にリダイレクト
+# - 別バケットを使用したシンプルなリダイレクト実装
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Redirect bucket for domain unification (www to non-www or vice versa)'
+
+Parameters:
+  TargetDomain:
+    Type: String
+    Description: Target domain to redirect to (e.g., example.com)
+
+Resources:
+  # リダイレクト用バケット（www.example.com 向け）
+  RedirectBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'redirect-www-${AWS::AccountId}-${AWS::Region}'
+      WebsiteConfiguration:
+        # ホストベースのリダイレクト設定
+        RedirectAllRequestsTo:
+          HostName: !Ref TargetDomain
+          Protocol: https
+
+  PublicAccessBlockConfiguration:
+    Type: AWS::S3::BucketPublicAccessBlock
+    Properties:
+      BucketName: !Ref RedirectBucket
+      BlockPublicAcls: false
+      BlockPublicPolicy: false
+      IgnorePublicAcls: false
+      RestrictPublicBuckets: false
+
+  # バケットポリシー：GetObjectを許可
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref RedirectBucket
+      PolicyText:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicRead
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Sub '${RedirectBucket.Arn}/*'
+
+Outputs:
+  RedirectBucketName:
+    Description: Redirect Bucket Name
+    Value: !Ref RedirectBucket
+  WebsiteURL:
+    Description: Redirect Website URL
+    Value: !GetAtt RedirectBucket.WebsiteURL

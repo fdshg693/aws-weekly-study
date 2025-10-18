@@ -1,0 +1,68 @@
+# 中級バージョン：エラーページ設定機能追加
+#
+# 概念：
+# - 複数ページ対応用のディレクトリ構造
+# - カスタムエラーページ（404.html）設定
+# - インデックスドキュメント設定で自動index.html表示
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Intermediate S3 bucket with error page handling'
+
+Resources:
+  StaticWebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'static-website-intermediate-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration:
+        Status: Enabled
+      WebsiteConfiguration:
+        # インデックスドキュメント：各ディレクトリのデフォルトファイル
+        IndexDocument: index.html
+        # エラードキュメント：404など存在しないパスへのアクセス時
+        ErrorDocument: 404.html
+
+  PublicAccessBlockConfiguration:
+    Type: AWS::S3::BucketPublicAccessBlock
+    Properties:
+      BucketName: !Ref StaticWebsiteBucket
+      BlockPublicAcls: false
+      BlockPublicPolicy: false
+      IgnorePublicAcls: false
+      RestrictPublicBuckets: false
+
+  # ポリシー：GetObjectのみ許可（リード専用）
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StaticWebsiteBucket
+      PolicyText:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicRead
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Sub '${StaticWebsiteBucket.Arn}/*'
+            # 特定のファイル形式のみに制限することも可能
+            # Condition:
+            #   StringLike:
+            #     aws:SourceIp: '0.0.0.0/0'
+
+  # ライフサイクルポリシー：古いバージョン自動削除
+  BucketLifecycleConfiguration:
+    Type: AWS::S3::BucketLifecycleConfiguration
+    Properties:
+      Bucket: !Ref StaticWebsiteBucket
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+
+Outputs:
+  WebsiteURL:
+    Description: S3 Static Website URL
+    Value: !GetAtt StaticWebsiteBucket.WebsiteURL
+  BucketName:
+    Description: S3 Bucket Name
+    Value: !Ref StaticWebsiteBucket
