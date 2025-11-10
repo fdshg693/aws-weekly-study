@@ -2,3 +2,8 @@
 **.tfstate**
 
 .DS_Store
+
+**.pyc
+__pycache__/
+.vscode/
+**.zip
