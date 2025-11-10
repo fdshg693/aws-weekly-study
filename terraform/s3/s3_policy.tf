@@ -27,7 +27,10 @@ resource "aws_s3_bucket_public_access_block" "static_website" {
 }
 
 # バケットポリシー：全員が読み取り可能
+# 本番環境ではスキップ（CloudFront OAI経由でのアクセスに統一）
 resource "aws_s3_bucket_policy" "static_website" {
+  # 本番環境ではcountが0になるため、このリソースは作成されない
+  count  = local.is_production ? 0 : 1
   bucket = aws_s3_bucket.static_website.id
 
   # depends_onで明示的な依存関係を定義
