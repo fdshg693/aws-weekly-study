@@ -1,0 +1,37 @@
+---
+- name: Setup Nginx web server on EC2 instance
+  hosts: ec2
+  become: yes
+  vars:
+    env_name: "{{ env_name | default('dev') }}"
+  
+  tasks:
+    - name: Update all packages
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        update_cache: yes
+      
+    - name: Install Nginx
+      ansible.builtin.dnf:
+        name: nginx
+        state: present
+        
+    - name: Create custom index.html from template
+      ansible.builtin.template:
+        src: templates/index.html.j2
+        dest: /usr/share/nginx/html/index.html
+        owner: nginx
+        group: nginx
+        mode: '0644'
+        
+    - name: Start and enable Nginx service
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: yes
+        
+    - name: Reload Nginx to apply changes
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded
