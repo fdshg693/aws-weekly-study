@@ -2,7 +2,8 @@
 
 # SSH鍵ペアを生成するスクリプト
 # 使用方法: ./generate_ssh_key.sh [鍵の保存先ディレクトリ] [鍵の名前]
-# 例: ./generate_ssh_key.sh ~/.ssh id_rsa
+# デフォルトは、保存先ディレクトリが ~/.ssh、鍵の名前が id_rsa
+# 例: ./generate_ssh_key.sh ~/.ssh id_rsa id_rsa
 
 set -e  # エラーが発生したら即座に終了
 
