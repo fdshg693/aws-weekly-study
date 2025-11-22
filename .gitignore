@@ -7,3 +7,9 @@
 __pycache__/
 .vscode/
 **.zip
+
+**real.tfvars
+
+**.pem
+**id_rsa
+**id_rsa.pub
