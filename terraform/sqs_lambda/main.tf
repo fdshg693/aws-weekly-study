@@ -185,8 +185,8 @@ module "lambda_producer" {
   source_path = "${path.module}/lambda_code/producer"
 
   # Lambda ランタイム設定
-  handler = "index.handler" # index.py の handler 関数
-  runtime = "python3.12"    # Python ランタイム
+  handler = "index.lambda_handler" # index.py の lambda_handler 関数
+  runtime = "python3.12"           # Python ランタイム
 
   # リソース設定（ルート変数から取得）
   memory_size                    = var.lambda_memory_size
@@ -300,7 +300,7 @@ module "lambda_consumer" {
   source_path = "${path.module}/lambda_code/consumer"
 
   # Lambda ランタイム設定
-  handler = "index.handler"
+  handler = "index.lambda_handler" # index.py の lambda_handler 関数
   runtime = "python3.12"
 
   # リソース設定

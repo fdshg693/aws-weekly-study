@@ -44,7 +44,7 @@ output "orders_endpoint" {
     使用例:
     curl -X POST {orders_endpoint} \
       -H "Content-Type: application/json" \
-      -d '{"orderId": "order-001", "item": "laptop", "quantity": 1}'
+      -d '{"customer_name": "山田太郎", "items": [{"name": "laptop", "quantity": 1, "price": 98000}], "total_amount": 98000}'
   EOT
   value       = module.api_gateway.orders_endpoint
 }
@@ -60,7 +60,7 @@ output "producer_function_name" {
     AWS CLI での呼び出し例:
     aws lambda invoke \
       --function-name {producer_function_name} \
-      --payload '{"body": "{\"orderId\": \"test-001\"}"}' \
+      --payload '{"body": "{\"customer_name\": \"テスト顧客\", \"items\": [{\"name\": \"laptop\", \"quantity\": 1, \"price\": 98000}], \"total_amount\": 98000}"}' \
       response.json
     
     ログの確認:
@@ -118,7 +118,7 @@ output "queue_url" {
     AWS CLI でのメッセージ送信例:
     aws sqs send-message \
       --queue-url {queue_url} \
-      --message-body '{"orderId": "test-001", "item": "laptop"}'
+      --message-body '{"customer_name": "テスト顧客", "items": [{"name": "laptop", "quantity": 1, "price": 98000}], "total_amount": 98000}'
     
     キューの状態確認:
     aws sqs get-queue-attributes \
@@ -236,11 +236,11 @@ output "aws_region" {
 #   curl -X POST "$ORDERS_ENDPOINT" \
 #     -H "Content-Type: application/json" \
 #     -d '{
-#       "orderId": "order-001",
-#       "customerId": "customer-123",
+#       "customer_name": "山田太郎",
 #       "items": [
-#         {"productId": "prod-001", "quantity": 2, "price": 1000}
-#       ]
+#         {"name": "ノートパソコン", "quantity": 2, "price": 98000}
+#       ],
+#       "total_amount": 196000
 #     }'
 #
 # ■ 2. SQS キューの状態確認
@@ -278,7 +278,7 @@ output "aws_region" {
 #   for i in {1..5}; do
 #     curl -X POST "$ORDERS_ENDPOINT" \
 #       -H "Content-Type: application/json" \
-#       -d "{\"orderId\": \"order-$(date +%s)-$i\", \"item\": \"product-$i\"}"
+#       -d "{\"customer_name\": \"顧客$i\", \"items\": [{\"name\": \"product-$i\", \"quantity\": 1, \"price\": 1000}], \"total_amount\": 1000}"
 #     sleep 1
 #   done
 #
@@ -302,9 +302,12 @@ output "test_curl_command" {
     curl -X POST "${module.api_gateway.orders_endpoint}" \
       -H "Content-Type: application/json" \
       -d '{
-        "orderId": "test-order-001",
-        "customerId": "customer-001",
-        "items": [{"productId": "item-001", "quantity": 1}]
+        "customer_name": "山田太郎",
+        "items": [
+          {"name": "ノートパソコン", "quantity": 1, "price": 98000},
+          {"name": "マウス", "quantity": 2, "price": 3500}
+        ],
+        "total_amount": 105000
       }'
   EOT
 }
@@ -325,7 +328,11 @@ output "test_commands" {
     1️⃣ API で注文を作成:
     curl -X POST "${module.api_gateway.orders_endpoint}" \
       -H "Content-Type: application/json" \
-      -d '{"orderId": "test-001", "item": "laptop", "quantity": 1}'
+      -d '{
+        "customer_name": "テスト顧客",
+        "items": [{"name": "laptop", "quantity": 1, "price": 120000}],
+        "total_amount": 120000
+      }'
     
     2️⃣ SQS キューの状態確認:
     aws sqs get-queue-attributes \

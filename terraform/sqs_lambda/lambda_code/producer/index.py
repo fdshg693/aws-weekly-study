@@ -28,8 +28,8 @@ import os
 import uuid
 from datetime import datetime
 
-import boto3
-from botocore.exceptions import ClientError
+import boto3 # pyright: ignore[reportMissingImports]
+from botocore.exceptions import ClientError # pyright: ignore[reportMissingImports]
 
 # ============================================================================
 # ロガーの設定

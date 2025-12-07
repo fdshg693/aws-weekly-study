@@ -116,7 +116,7 @@ output "orders_endpoint" {
     使用例:
     curl -X POST {orders_endpoint} \\
       -H "Content-Type: application/json" \\
-      -d '{"orderId": "12345", "item": "laptop", "quantity": 1}'
+      -d '{"customer_name": "山田太郎", "items": [{"name": "laptop", "quantity": 1, "price": 98000}], "total_amount": 98000}'
   EOT
   value       = "${aws_api_gateway_stage.this.invoke_url}/orders"
 }
@@ -165,11 +165,11 @@ output "deployment_id" {
 # curl -X POST "$(terraform output -raw orders_endpoint)" \
 #   -H "Content-Type: application/json" \
 #   -d '{
-#     "orderId": "order-001",
-#     "customerId": "cust-123",
+#     "customer_name": "山田太郎",
 #     "items": [
-#       {"productId": "prod-001", "quantity": 2}
-#     ]
+#       {"name": "laptop", "quantity": 2, "price": 98000}
+#     ],
+#     "total_amount": 196000
 #   }'
 #
 # ■ ログの確認
