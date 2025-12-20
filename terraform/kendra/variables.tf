@@ -52,6 +52,44 @@ variable "data_source_name" {
   default     = "webcrawler"
 }
 
+variable "data_source_language_code" {
+  description = <<EOT
+Language code for the Kendra Data Source.
+
+用途:
+- この Data Source が取り込むドキュメントの主言語を Kendra に伝えるための設定です。
+- Kendra の言語処理（トークナイズ/正規化など）に影響し、検索精度に関係します。
+
+代表的な値（AWSの言語コード）:
+- ja, en, ko, zh, es, fr, de, it, pt, ar, hi
+
+null の場合:
+- Terraform では引数を未設定扱いにし、Kendra 側のデフォルト挙動に従います。
+EOT
+  type        = string
+  default     = null
+
+  validation {
+    condition = (
+      var.data_source_language_code == null ||
+      contains([
+        "ar",
+        "de",
+        "en",
+        "es",
+        "fr",
+        "hi",
+        "it",
+        "ja",
+        "ko",
+        "pt",
+        "zh",
+      ], var.data_source_language_code)
+    )
+    error_message = "data_source_language_code must be null or one of: ar, de, en, es, fr, hi, it, ja, ko, pt, zh."
+  }
+}
+
 variable "seed_urls" {
   description = "Seed URLs for the web crawler (e.g., https://example.com, https://example.com/docs)"
   type        = list(string)

@@ -7,6 +7,9 @@ kendra_edition           = "DEVELOPER_EDITION"
 
 data_source_name = "webcrawler-prod"
 
+# 取り込むサイトの言語に合わせて設定（未設定にするなら null）
+# data_source_language_code = "en"
+
 seed_urls = [
   "https://example.com/",
 ]

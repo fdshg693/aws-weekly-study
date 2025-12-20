@@ -4,6 +4,7 @@
 このディレクトリは、Amazon Kendra の **Index** と **WEBCRAWLER Data Source** を Terraform で作成します。
 - Seed URL は `seed_urls` 変数で指定
 - URL の包含/除外は `url_inclusion_patterns` / `url_exclusion_patterns`（正規表現）で指定
+- 取り込む言語は `data_source_language_code` で指定（例: `ja`, `en`）
 
 ## ファイル構成
 - `provider.tf`: AWS Provider 設定
@@ -62,3 +63,22 @@ terraform destroy -var-file="dev.tfvars"
 ## メモ
 - `schedule` 変数に `cron(...)` を設定すると定期同期が有効になります。未設定（`null`）の場合はスケジュール同期は無効です。
 - Web Crawler の包含/除外パターンは URL に対する正規表現です。Terraform 文字列なので `\\.` のようにエスケープが必要な場合があります。
+- `data_source_language_code` は Data Source が取り込むドキュメントの想定言語です。対象サイトの言語に合わせると検索精度に寄与することがあります。
+
+## よくあるエラー
+
+### `describeLogGroup` / `DescribeLogGroups` 権限不足
+手動同期で以下のようなエラーが出る場合があります。
+
+> Amazon Kendra can't execute the describeLogGroup action with the specified index role...
+
+これは **Kendra Index の `role_arn`（= Index role）** に CloudWatch Logs の参照権限が不足していることが原因です。
+
+- 対処: Index role に `logs:DescribeLogGroups`（必要に応じて `logs:DescribeLogStreams`）を付与します。
+  - 本ディレクトリでは [iam.tf](iam.tf) の `kendra_logs` ポリシーで付与しています。
+
+Index role の確認例:
+```bash
+aws kendra describe-index --id "$(terraform output -raw kendra_index_id)" \
+  --query 'RoleArn' --output text
+```
