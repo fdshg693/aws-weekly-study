@@ -14,14 +14,11 @@
     - AWS CLI関連の設定・スクリプト
 - `docs`
     - `docs/ai_generate`: AI生成ドキュメント
-    - `docs/high_quality`: 高品質ドキュメント
+    - `docs/doc_templates`: ドキュメントテンプレート
     - `docs/learning_notes`: 学習メモ
     - `docs/memos`: 各種メモ
 - `python`
     - Python関連のサンプルコード・プロジェクト
-- `scenarios`
-    - 各種シナリオの説明
-        - どのようなシナリオに各種コードが対応しているか等
 - `scripts`
     - 各種スクリプト
 - `terraform`

@@ -1,5 +1,3 @@
-# Amazon Kendra: Index + S3 Data Source
-
 resource "aws_kendra_index" "this" {
   name        = var.kendra_index_name
   description = var.kendra_index_description
@@ -14,10 +12,6 @@ resource "aws_kendra_data_source" "s3" {
   name     = var.data_source_name
   type     = "S3"
 
-  # language_code: このデータソースが取得するドキュメントの想定言語。
-  # - 検索の分かち書き/ステミング等の言語処理に影響します
-  # - 例: "ja"(日本語), "en"(英語), "ko"(韓国語), "zh"(中国語)
-  # - null の場合はプロバイダー/サービスのデフォルト挙動に従います（言語推定など）
   language_code = var.data_source_language_code
 
   # Kendra がクロール＆同期ジョブを実行するためのロール

@@ -1,5 +1,10 @@
-# 本番用のtfvarsファイル
-# terraform apply -var-file="prod.tfvars"
+# ==============================
+# - CloudFront有効
+# - S3プライベート（OAC経由アクセスのみ）
+# - バージョニング有効
+# - HTTPSアクセス
+# - グローバルCDN配信
+# ==============================
 
 aws_region            = "ap-northeast-1"
 environment           = "production"

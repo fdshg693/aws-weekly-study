@@ -1,10 +1,12 @@
+# ==============================
 # 変数の定義・型などを設定するインターフェース部分
-# 実際の値の指定は、コマンドラインオプションや環境変数、tfvarsファイルなどで行う想定
+# - AWSリージョンの指定
+# - 環境（本番/開発）の指定
+# ==============================
 
 variable "aws_region" {
   description = "AWS region for resources"
   type        = string
-  # ここではあくまでデフォルト値のみの設定にとどめて、実際の指定は基本的にコマンドラインや環境変数・tfvarsファイルで行う想定
   default     = "ap-northeast-1" # 東京リージョン
 
   # 代入される値の妥当性チェック
@@ -19,12 +21,12 @@ variable "aws_region" {
 
 # 本番か開発環境かを区別するための変数
 variable "environment" {
-  description = "Deployment environment (e.g., development, staging, production)"
+  description = "本番環境か開発環境かを指定します。本番：production、開発：その他"
   type        = string
   default     = "development"
 
   validation {
-    condition     = contains(["development", "staging", "production"], var.environment)
-    error_message = "Environment must be one of: development, staging, production."
+    condition     = contains(["development", "production"], var.environment)
+    error_message = "Environment must be one of: development, production."
   }
 }

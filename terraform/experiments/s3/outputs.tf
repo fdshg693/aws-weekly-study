@@ -4,19 +4,19 @@
 output "website_endpoint" {
   description = "S3 Static Website Endpoint"
   value       = aws_s3_bucket_website_configuration.static_website.website_endpoint
-  sensitive   = false # sensitiveな情報の場合true
+  sensitive   = false 
 }
 
 # バケット名出力
 output "bucket_name" {
   description = "S3 Bucket Name"
   value       = aws_s3_bucket.static_website.id
-  sensitive   = false # sensitiveな情報の場合true
+  sensitive   = false 
 }
 
 # ウェブサイトURL出力（http://付き）
 output "website_url" {
   description = "S3 Static Website URL"
   value       = "http://${aws_s3_bucket_website_configuration.static_website.website_endpoint}"
-  sensitive   = false # sensitiveな情報の場合true
+  sensitive   = false 
 }

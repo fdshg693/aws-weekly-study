@@ -1,4 +1,8 @@
-# Root Module Variables
+# ==============================
+# - aws_region/environment: デプロイ環境の指定
+# - enable_cloudfront/cloudfront_price_class: CloudFront設定
+# - custom_domain_names/acm_certificate_arn: カスタムドメインと証明書設定
+# ==============================
 
 variable "aws_region" {
   description = "AWS region for resources"

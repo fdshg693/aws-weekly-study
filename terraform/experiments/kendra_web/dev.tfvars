@@ -9,12 +9,12 @@ data_source_name = "webcrawler-dev"
 
 # Data Source が取り込むコンテンツの主言語（Kendra の言語処理に影響）
 # 代表例: "ja", "en", "ko", "zh" など
-data_source_language_code = "ja"
+data_source_language_code = "en"
 
 # クロール開始URL（複数指定可）
 # Claude ドキュメントの特定パスのみ取り込む例
 seed_urls = [
-  "https://platform.claude.com/docs/ja/about-claude/models/overview",
+  "https://platform.claude.com/docs/en/about-claude/models/overview",
 ]
 
 # 例: 同一ホスト配下のみ
@@ -22,7 +22,7 @@ web_crawler_mode = "HOST_ONLY"
 
 # /about-claude/ 配下に限定
 url_inclusion_patterns = [
-  ".*platform\\.claude\\.com/docs/ja/about-claude/.*"
+  ".*platform\\.claude\\.com/docs/en/about-claude/.*"
 ]
 
 

@@ -1,8 +1,6 @@
 # IAMロール/ポリシー
-# - Kendra はサービスプリンシパル（kendra.amazonaws.com）としてロールを AssumeRole し、
-#   インデックス作成/同期ジョブ実行/CloudWatch Logs 出力等を行います。
-# - ベストプラクティス: インデックス用ロールとデータソース用ロールは分離し、
-#   目的ごとに最小権限で付与します（このディレクトリでも分離しています）。
+# - Kendra はサービスプリンシパル（kendra.amazonaws.com）としてロールを AssumeRole し、インデックス作成/同期ジョブ実行/CloudWatch Logs 出力等を行います。
+# - ベストプラクティス: インデックス用ロールとデータソース用ロールは分離し、目的ごとに最小権限で付与します（このディレクトリでも分離しています）。
 
 data "aws_iam_policy_document" "kendra_assume_role" {
   statement {
@@ -19,8 +17,7 @@ data "aws_iam_policy_document" "kendra_assume_role" {
 
 # CloudWatch Logs へ出力するための最小権限（Kendra Index / Data Source で共通利用）
 # - Web Crawler が公開サイトを読むだけなら、基本は Logs 権限で動作します。
-# - ただし、認証付きサイトをクロールする/プロキシを使う等に拡張する場合は、
-#   Secrets Manager 参照権限など追加の IAM 設計が必要になります。
+# - ただし、認証付きサイトをクロールする/プロキシを使う等に拡張する場合は、Secrets Manager 参照権限など追加の IAM 設計が必要になります。
 data "aws_iam_policy_document" "kendra_logs" {
   statement {
     effect = "Allow"

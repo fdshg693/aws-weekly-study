@@ -26,16 +26,13 @@ resource "aws_cloudfront_origin_access_control" "s3_oac" {
   signing_protocol                  = "sigv4"
 }
 
-# CloudFront Distribution
-# CloudFrontディストリビューションはCDN（Content Delivery Network）を提供するリソースです。
-# 世界中のエッジロケーションにコンテンツをキャッシュし、ユーザーに高速にコンテンツを配信します。
+# CloudFrontディストリビューションはCDN（Content Delivery Network）を提供するリソースです。世界中のエッジロケーションにコンテンツをキャッシュし、ユーザーに高速にコンテンツを配信します。
 resource "aws_cloudfront_distribution" "s3_distribution" {
   # ディストリビューションの有効化状態を制御します。
   # true - ディストリビューションを有効化し、コンテンツ配信を開始します
   # false - ディストリビューションを無効化します（デプロイされますが、リクエストを受け付けません）
   enabled = var.enabled
 
-  # IPv6のサポートを有効にするかどうかを指定します。
   # true - IPv6アドレスからのアクセスを許可（推奨：より広範なユーザーにリーチできます）
   # false - IPv4のみをサポート
   is_ipv6_enabled = var.enable_ipv6
@@ -48,15 +45,13 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
   # 通常は "index.html" を指定します。これにより、ディレクトリへのアクセス時に自動的にindex.htmlが表示されます。
   default_root_object = var.default_root_object
 
-  # CloudFrontの料金クラスを指定します。これにより使用するエッジロケーションの範囲が決まります。
   # PriceClass_All - すべてのエッジロケーションを使用（最高のパフォーマンス、最高コスト）
   # PriceClass_200 - 北米、ヨーロッパ、アジア、中東、アフリカのエッジロケーションを使用
   # PriceClass_100 - 北米とヨーロッパのエッジロケーションのみを使用（最低コスト）
   price_class = var.price_class
 
   # カスタムドメイン名（CNAME）のリストです。
-  # CloudFrontのデフォルトドメイン（xxx.cloudfront.net）の代わりに使用するカスタムドメインを指定します。
-  # 例: ["example.com", "www.example.com"]
+  # CloudFrontのデフォルトドメイン（xxx.cloudfront.net）の代わりに使用するカスタムドメインを指定します。例: ["example.com", "www.example.com"]
   # 使用する場合は、対応するSSL証明書（ACM）とDNS設定（Route53など）が必要です。
   aliases = var.aliases
 
@@ -70,33 +65,26 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
     domain_name = var.s3_bucket_regional_domain_name
 
     # このオリジンを識別するための一意のID文字列です。
-    # cache_behaviorのtarget_origin_idで参照され、どのオリジンを使用するかを指定します。
-    # 複数のオリジンを使用する場合、それぞれ異なるIDを設定します。
+    # cache_behaviorのtarget_origin_idで参照され、どのオリジンを使用するかを指定します。複数のオリジンを使用する場合、それぞれ異なるIDを設定します。
     origin_id = var.origin_id
 
     # Origin Access Control (OAC)のIDを指定します。
-    # OACを使用することで、CloudFrontからのみS3バケットへのアクセスを許可し、
-    # 直接的なS3バケットへのアクセスをブロックできます。これによりセキュリティが向上します。
+    # OACを使用することで、CloudFrontからのみS3バケットへのアクセスを許可し、直接的なS3バケットへのアクセスをブロックできます。これによりセキュリティが向上します。
     origin_access_control_id = aws_cloudfront_origin_access_control.s3_oac.id
   }
 
-  # デフォルトキャッシュビヘイビア
   # キャッシュビヘイビアは、特定のパスパターンに対するCloudFrontの動作を定義します。
   # default_cache_behaviorは、他のキャッシュビヘイビアにマッチしないすべてのリクエストに適用されます。
   default_cache_behavior {
     # CloudFrontが受け付けるHTTPメソッドのリストです。
-    # GET, HEAD - 読み取り専用の静的コンテンツ配信の場合
-    # GET, HEAD, OPTIONS - CORSを含む読み取り専用の場合
-    # GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE - 完全なRESTful APIの場合
     allowed_methods = var.allowed_methods
 
     # CloudFrontがキャッシュするHTTPメソッドのリストです。
-    # 通常は ["GET", "HEAD"] または ["GET", "HEAD", "OPTIONS"] を指定します。
-    # POST/PUT/DELETEなどの変更系メソッドはキャッシュしないのが一般的です。
+    # 通常は ["GET", "HEAD"] または ["GET", "HEAD", "OPTIONS"] を指定します。POST/PUT/DELETEなどの変更系メソッドはキャッシュしないのが一般的です。
     cached_methods = var.cached_methods
 
     # このキャッシュビヘイビアが使用するオリジンのIDを指定します。
-    # origin ブロックで定義した origin_id と一致させる必要があります。
+    # 上の origin ブロックで定義した origin_id と一致させる必要があります。
     target_origin_id = var.origin_id
 
     # ビューワー（エンドユーザー）とCloudFront間の通信プロトコルを制御します。
@@ -125,7 +113,6 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
     origin_request_policy_id = var.origin_request_policy_id
   }
 
-  # カスタムエラーレスポンス
   # オリジンからエラーレスポンス（4xx, 5xx）が返された場合の動作をカスタマイズします。
   # 例: 404エラー時にカスタムエラーページを表示したり、エラーをキャッシュする時間を制御できます。
   # dynamic ブロックを使用して、変数で定義された複数のエラーレスポンス設定を動的に生成します。
@@ -146,17 +133,14 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
       # エラーレスポンスをCloudFrontがキャッシュする最小時間（秒）を指定します。
       # 0 - エラーをキャッシュしない（オリジンの状態をすぐに反映）
       # 300 - 5分間キャッシュ（オリジンへの負荷を軽減）
-      # 一時的なエラーの場合は短く、恒久的なエラーの場合は長く設定します。
       error_caching_min_ttl = custom_error_response.value.error_caching_min_ttl
     }
   }
 
-  # 地理的制限（Geo Restriction）
   # 特定の国や地域からのアクセスを制限または許可する機能です。
   # コンテンツの配信地域を制御したい場合や、ライセンス契約で特定地域への配信が制限されている場合に使用します。
   restrictions {
     geo_restriction {
-      # 制限のタイプを指定します。
       # none - 地理的制限を適用しない（すべての国からのアクセスを許可）
       # whitelist - 指定した国のみアクセスを許可（それ以外は拒否）
       # blacklist - 指定した国からのアクセスを拒否（それ以外は許可）
@@ -199,12 +183,11 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
     minimum_protocol_version = var.minimum_protocol_version
   }
 
-  # ロギング設定（オプション）
   # CloudFrontへのすべてのリクエストを記録し、指定したS3バケットにログファイルを保存します。
   # アクセス解析、セキュリティ監査、トラブルシューティングに使用できます。
   # dynamic ブロックを使用して、ロギングバケットが指定されている場合のみこの設定を有効にします。
   dynamic "logging_config" {
-    for_each = var.logging_bucket != "" ? [1] : []
+    count = var.logging_bucket != "" ? 1 : 0
     content {
       # ログファイルを保存するS3バケットのドメイン名を指定します。
       # 形式: bucket-name.s3.amazonaws.com
@@ -236,15 +219,3 @@ resource "aws_cloudfront_distribution" "s3_distribution" {
     }
   )
 }
-
-# データソースは使用しないが、参照用にコメントアウト
-# デフォルトのマネージドキャッシュポリシー（CachingOptimized）
-# AWSが提供する事前定義されたキャッシュポリシーを参照するデータソースです。
-# CachingOptimizedは以下の特徴を持つ汎用的なキャッシュポリシーです：
-# - クエリ文字列、ヘッダー、Cookieをキャッシュキーに含めない（シンプルなキャッシュ）
-# - TTL: 最小0秒、デフォルト86400秒（1日）、最大31536000秒（1年）
-# - gzip/brotli圧縮をサポート
-# 静的コンテンツ（HTML、CSS、JS、画像など）の配信に適しています。
-# data "aws_cloudfront_cache_policy" "caching_optimized" {
-#   name = "Managed-CachingOptimized"
-# }

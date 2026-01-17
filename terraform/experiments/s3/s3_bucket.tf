@@ -9,7 +9,7 @@ resource "aws_s3_bucket" "static_website" {
   tags = {
     Name        = "Static Website Bucket"
     Environment = "Learning"
-    Purpose     = "01_basic_static_hosting"
+    Purpose     = "simple static website hosting"
   }
 }
 

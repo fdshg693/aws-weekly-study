@@ -49,54 +49,6 @@ S3とCloudFrontを独立したモジュールとして分離し、環境に応�
 ### 環境別の最適化
 開発環境では迅速なイテレーションを重視し、本番環境ではセキュリティと性能を重視した設定になっています。tfvarsファイルを切り替えるだけで、適切な構成がデプロイされます。
 
-## 使用方法
-
-### 開発環境へのデプロイ（S3のみ）
-```bash
-# 適用
-terraform apply -var-file="dev.tfvars"
-```
-
-開発環境では `enable_cloudfront = false` となっており、S3単体での静的ウェブサイトホスティングが有効になります。
-
-### 本番環境へのデプロイ（S3 + CloudFront）
-```bash
-# 適用
-terraform apply -var-file="prod.tfvars"
-```
-
-本番環境では `enable_cloudfront = true` となっており、CloudFrontを経由したアクセスが有効になります。
-
-## 環境別設定
-
-### 開発環境 (`dev.tfvars`)
-```hcl
-aws_region        = "ap-northeast-1"
-environment       = "development"
-enable_cloudfront = false  # S3単体
-```
-
-**特徴:**
-- CloudFront無効
-- S3パブリックアクセス許可
-- バージョニング無効
-- HTTPアクセス
-
-### 本番環境 (`prod.tfvars`)
-```hcl
-aws_region            = "ap-northeast-1"
-environment           = "production"
-enable_cloudfront     = true
-cloudfront_price_class = "PriceClass_200"
-```
-
-**特徴:**
-- CloudFront有効
-- S3プライベート（OAC経由アクセスのみ）
-- バージョニング有効
-- HTTPSアクセス
-- グローバルCDN配信
-
 ## カスタムドメインの設定
 
 カスタムドメインを使用する場合は、以下の手順を実施してください：
@@ -118,25 +70,6 @@ cloudfront_price_class = "PriceClass_200"
 
 3. **Route 53でのDNS設定**
    - CloudFrontのドメイン名にCNAMEまたはAliasレコードを設定
-
-## 出力情報
-
-デプロイ後、以下の情報が出力されます：
-
-### S3関連
-- `s3_bucket_id`: S3バケットID
-- `s3_bucket_arn`: S3バケットARN
-- `s3_website_endpoint`: S3ウェブサイトエンドポイント（CloudFront無効時）
-- `s3_website_url`: S3ウェブサイトURL（CloudFront無効時）
-
-### CloudFront関連（有効時のみ）
-- `cloudfront_distribution_id`: CloudFront Distribution ID
-- `cloudfront_distribution_arn`: CloudFront Distribution ARN
-- `cloudfront_domain_name`: CloudFrontドメイン名
-- `cloudfront_url`: CloudFrontのHTTPS URL
-
-### 共通
-- `website_url`: アクセス用URL（CloudFront有効時はHTTPS、無効時はS3のHTTP URL）
 
 ## モジュール化のメリット
 

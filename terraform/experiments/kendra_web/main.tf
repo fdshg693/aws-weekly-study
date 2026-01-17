@@ -17,7 +17,6 @@ resource "aws_kendra_data_source" "webcrawler" {
   # language_code: このデータソースが取得するドキュメントの想定言語。
   # - 検索の分かち書き/ステミング等の言語処理に影響します
   # - 例: "ja"(日本語), "en"(英語), "ko"(韓国語), "zh"(中国語)
-  # - null の場合はプロバイダー/サービスのデフォルト挙動に従います（言語推定など）
   language_code = var.data_source_language_code
 
   # Kendra がクロール＆同期ジョブを実行するためのロール
@@ -37,8 +36,7 @@ resource "aws_kendra_data_source" "webcrawler" {
 
       # crawl_depth: Seed URL から辿るリンクの深さ。
       # - 値を上げるほど収集範囲が広がる一方、クロール時間・負荷が増えます
-      # - 大きくし過ぎると想定外のページ（例: 検索結果/タグ一覧等）を拾いやすいので
-      #   inclusion/exclusion patterns とセットで調整するのが安全です
+      # - 大きくし過ぎると想定外のページ（例: 検索結果/タグ一覧等）を拾いやすいのでinclusion/exclusion patterns とセットで調整するのが安全です
       crawl_depth = 2
 
       url_inclusion_patterns = var.url_inclusion_patterns

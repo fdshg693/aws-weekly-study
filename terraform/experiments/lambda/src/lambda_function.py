@@ -129,12 +129,6 @@ def validate_event(event):
     if not isinstance(event, dict):
         return False, "Event must be a dictionary"
     
-    # 必須フィールドのチェック例
-    # required_fields = ['name', 'action']
-    # for field in required_fields:
-    #     if field not in event:
-    #         return False, f"Missing required field: {field}"
-    
     return True, None
 
 

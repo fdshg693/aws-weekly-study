@@ -30,4 +30,5 @@ output "oac_arn" {
   value       = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:origin-access-control/${aws_cloudfront_origin_access_control.s3_oac.id}"
 }
 
+# 上のoac_arn出力で使用するための現在のAWSアカウントIDを取得します。
 data "aws_caller_identity" "current" {}

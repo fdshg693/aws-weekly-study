@@ -1,65 +1,57 @@
-# Amazon Kendra (Index + S3 Data Source) - Terraform
+# Amazon Kendra (Index + S3 Data Source)
 
 ## 概要
-このディレクトリは、Amazon Kendra の **Index** と **S3 Data Source** を Terraform で作成します。
-- 取り込み対象: `s3://<bucket>/<prefix>/`（デフォルトは `documents/`）
-- 取り込む言語は `data_source_language_code` で指定（例: `ja`, `en`）
+Amazon KendraのIndexとS3 Data Sourceを構築するTerraformプロジェクトです。S3バケットに保存されたドキュメントをKendraでインデックス化し、高度な検索機能を提供します。
 
-## ファイル構成
-- `provider.tf`: AWS Provider 設定
-- `variables.tf`: 変数定義
-- `iam.tf`: Kendra 用 IAM ロール/ポリシー
-- `main.tf`: `aws_kendra_index` / `aws_kendra_data_source`
-- `outputs.tf`: Index/Data Source のID等
-- `dev.tfvars` / `prod.tfvars`: 環境別の設定例
-- `s3.tf`: Kendra の S3 Data Source 用バケット
+### 技術スタック
+- Amazon Kendra（エンタープライズ検索サービス）
+- Amazon S3（ドキュメントストレージ）
+- CloudWatch Logs（ログ記録）
+- IAM（権限管理）
 
-## 前提
-- Terraform `>= 1.1`
-- AWS 認証情報（例: `AWS_PROFILE` / `AWS_ACCESS_KEY_ID` 等）
-- Kendra はリージョン依存のため `aws_region` を合わせてください
+### 作成物
+Kendraインデックスを作成し、S3バケット内のドキュメントを自動的に取り込んで検索可能にします。取り込み対象はS3バケットの指定されたプレフィックス配下（デフォルト: `documents/`）のファイルで、PDFやテキストファイルなどをアップロードすると、Kendraがコンテンツを解析してインデックス化します。定期同期をスケジュール設定することも、手動で同期をトリガーすることも可能です。
 
-## 使い方
+## 構成ファイル
+- [provider.tf](provider.tf) - AWS Provider設定
+- [variables.tf](variables.tf) - 変数定義（環境、リージョン、Kendra設定など）
+- [iam.tf](iam.tf) - Kendra用IAMロールとポリシー
+- [main.tf](main.tf) - KendraインデックスとData Source定義
+- [s3.tf](s3.tf) - ドキュメント保存用S3バケット
+- [outputs.tf](outputs.tf) - IndexとData SourceのID出力
+- [dev.tfvars](dev.tfvars) / [prod.tfvars](prod.tfvars) - 環境別設定
 
-### 1) 初期化
-```bash
-terraform init
-```
+## コードの特徴
 
-### 2) Plan / Apply
-開発環境:
-```bash
-terraform plan -var-file="dev.tfvars"
-terraform apply -var-file="dev.tfvars"
-```
+### 言語コード設定
+`data_source_language_code`変数でドキュメントの言語（ja、en等）を指定でき、Kendraの言語処理（トークナイズ、ステミングなど）を最適化します。nullの場合はKendraのデフォルト言語処理が適用されます。
 
-本番環境:
-```bash
-terraform plan -var-file="prod.tfvars"
-terraform apply -var-file="prod.tfvars"
-```
+### セキュアなS3バケット構成
+S3バケットはPublic Accessを全面ブロックし、SSE-S3暗号化を有効化、BucketOwnerEnforcedでACLを無効化するなど、セキュリティを重視した設計になっています。
 
-### 3) 同期（Sync）の手動トリガー
-#### 3-1) S3 へドキュメントをアップロード
-取り込み対象プレフィックス（デフォルト）:
+### IAMロール分離
+KendraインデックスとData Sourceでそれぞれ専用のIAMロールを作成し、最小権限の原則に従って必要な権限のみを付与しています。CloudWatch Logsへのログ出力権限も含まれます。
 
-- `s3://<bucket>/documents/`
+### 柔軟な同期スケジュール
+`schedule`変数でcron式を指定することで定期同期を設定でき、nullにすることで手動同期のみの運用も可能です。
 
-実際のアップロード先は Terraform output で確認できます。
+## 注意事項
 
-```bash
-terraform output -raw s3_uri
-```
+### 前提条件
+- Terraform 1.1以上
+- AWS認証情報の設定（AWS_PROFILE、AWS_ACCESS_KEY_IDなど）
+- Kendraはリージョン依存のため、利用可能リージョンで`aws_region`を設定してください
 
-例（ローカルのPDFをアップロード）:
+### 使い方
 
+#### ドキュメントのアップロードと同期
+
+S3へドキュメントをアップロード(指定した言語コードに対応したファイルを推奨):
 ```bash
 aws s3 cp ./sample.pdf "$(terraform output -raw s3_uri)"
 ```
 
-#### 3-2) 同期ジョブ開始
-作成した Data Source の同期を今すぐ実行したい場合は AWS CLI で開始できます。
-
+手動同期の開始:
 ```bash
 aws kendra start-data-source-sync-job \
   --index-id "$(terraform output -raw kendra_index_id)" \
@@ -73,29 +65,12 @@ aws kendra list-data-source-sync-jobs \
   --id "$(terraform output -raw kendra_data_source_id)"
 ```
 
-### 4) 削除
-```bash
-terraform destroy -var-file="dev.tfvars"
-```
+### よくあるエラー
 
-## メモ
-- `schedule` 変数に `cron(...)` を設定すると定期同期が有効になります。未設定（`null`）の場合はスケジュール同期は無効です。
-- `data_source_language_code` は Data Source が取り込むドキュメントの想定言語です。対象サイトの言語に合わせると検索精度に寄与することがあります。
+**`describeLogGroup`権限不足エラー**
 
-## よくあるエラー
+手動同期時に「Amazon Kendra can't execute the describeLogGroup action...」というエラーが出る場合は、Kendra IndexのIAMロールにCloudWatch Logsの参照権限が不足しています。[iam.tf](iam.tf)の`kendra_logs`ポリシーで`logs:DescribeLogGroups`と`logs:DescribeLogStreams`を付与することで解決できます。
 
-### `describeLogGroup` / `DescribeLogGroups` 権限不足
-手動同期で以下のようなエラーが出る場合があります。
-
-> Amazon Kendra can't execute the describeLogGroup action with the specified index role...
-
-これは **Kendra Index の `role_arn`（= Index role）** に CloudWatch Logs の参照権限が不足していることが原因です。
-
-- 対処: Index role に `logs:DescribeLogGroups`（必要に応じて `logs:DescribeLogStreams`）を付与します。
-  - 本ディレクトリでは [iam.tf](iam.tf) の `kendra_logs` ポリシーで付与しています。
-
-Index role の確認例:
-```bash
-aws kendra describe-index --id "$(terraform output -raw kendra_index_id)" \
-  --query 'RoleArn' --output text
-```
+### メモ
+- デフォルトの取り込み対象プレフィックスは`documents/`ですが、変数で変更可能です
+- `kendra_edition`はDEVELOPER_EDITIONとENTERPRISE_EDITIONから選択できます（開発用途ではDEVELOPER_EDITIONを推奨）

@@ -137,8 +137,9 @@ EC2インスタンスに付与されるIAMロールは、必要最小限の権�
 
 2. **SSH鍵ペアを生成**
    ```bash
-   ssh-keygen -t rsa -b 4096 -f ./discord-bot-key
-   chmod 600 discord-bot-key
+   mkdir -p ./ssh-secrets
+   ssh-keygen -t rsa -b 4096 -f ./ssh-secrets/discord-bot-key
+   chmod 600 ./ssh-secrets/discord-bot-key
    ```
 
 3. **dev.tfvarsを編集（自分のIPアドレスを設定）**
@@ -163,8 +164,6 @@ EC2インスタンスに付与されるIAMロールは、必要最小限の権�
    ssh -i ./discord-bot-key ec2-user@<公開IP>
    sudo journalctl -u discord-bot -f
    ```
-
-詳細な手順やトラブルシューティングについては、プロジェクト内の詳細ドキュメントを参照してください。
 
 ---
 

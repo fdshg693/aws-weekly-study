@@ -1,5 +1,9 @@
-# 開発用のtfvarsファイル
-# terraform apply -var-file="dev.tfvars"
+# ==============================
+# - CloudFront無効
+# - S3パブリックアクセス許可
+# - バージョニング無効
+# - HTTPアクセス
+# ==============================
 
 aws_region      = "ap-northeast-1"
 environment     = "development"

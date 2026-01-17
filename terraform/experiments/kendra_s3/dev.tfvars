@@ -9,7 +9,7 @@ data_source_name = "s3-dev"
 
 # Data Source が取り込むコンテンツの主言語（Kendra の言語処理に影響）
 # 代表例: "ja", "en", "ko", "zh" など
-data_source_language_code = "ja"
+data_source_language_code = "en"
 
 # S3 Data Source
 s3_bucket_name      = "kendra-s3"
