@@ -1,0 +1,32 @@
+# terraform
+**.terraform**
+**.tfstate**
+planfile
+
+# OS
+.DS_Store
+**.pem
+
+# python
+**.pyc
+__pycache__/
+.venv/
+uv.lock
+
+# secrets
+**id_rsa
+**id_rsa.pub
+# secretsフォルダやsecretsファイルはGit管理しない
+**secrets**
+# dev.tfvars, prod.tfvars等はGit管理する。シークレットを含めたい場合はreal.tfvars等を作成し、.gitignoreで無視する。
+**real** 
+# python用のsecretsファイル
+*.env
+
+# etc
+**.zip
+# test用エージェント
+.github/agents/test.agent.md
+
+
+

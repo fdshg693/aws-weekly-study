@@ -1,0 +1,9 @@
+[project]
+name = "py_scripts"
+version = "0.1.0"
+description = "A collection of Python scripts for various utilities."
+dependencies = [
+    "boto3>=1.42.14",
+    "discord-py>=2.6.4",
+    "python-dotenv>=1.2.1",
+]
