@@ -23,4 +23,4 @@
     - 各種スクリプト
 - `terraform`
     - `terraform/experiments` : Terraformの実験用の、詳細なコメント付きサンプルコード
-    - `terraform/projects` : Terraformの実践的なプロジェクトコード
+    - `terraform/projects` : Terraformの実践的な必要最低限なプロジェクトコード

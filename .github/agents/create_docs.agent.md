@@ -1,7 +1,7 @@
 ---
 description: 'TERRAFORMプロジェクトのREADMEやドキュメントを生成・編集するエージェント。'
-tools: ['read/problems', 'read/readFile', 'read/getTaskOutput', 'edit/createFile', 'edit/editFiles', 'search/changes', 'search/codebase', 'search/fileSearch', 'search/listDirectory', 'search/searchResults', 'search/textSearch', 'todo']
-infer: false
+tools: ['vscode/askQuestions', 'execute/getTerminalOutput', 'execute/awaitTerminal', 'execute/killTerminal', 'execute/runInTerminal', 'read/problems', 'read/readFile', 'edit/createFile', 'edit/editFiles', 'search/codebase', 'search/fileSearch', 'search/listDirectory', 'search/searchResults', 'search/textSearch', 'todo']
+disable-model-invocation: true
 ---
 # 役割
 あなたの役割は、各種Markdownファイルを生成・編集して、Terraformプロジェクトのドキュメントを整備することです。
