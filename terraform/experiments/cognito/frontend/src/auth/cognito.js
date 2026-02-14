@@ -1,120 +1,110 @@
-// Cognito OAuth Helper
-// ====================
-// Cognito Hosted UI の OAuth エンドポイントと通信するヘルパー関数です。
-// aws-amplify SDK を使わず、fetch API で直接通信します。
+// Cognito BFF API クライアント
+// ============================
+// BFFパターンでは、フロントエンドはCognitoと直接通信しません。
+// 代わりに、BFFサーバーの認証APIを呼び出します。
 //
-// エンドポイント一覧:
-// - /oauth2/authorize - 認可エンドポイント（ブラウザリダイレクト）
-// - /oauth2/token     - トークンエンドポイント（POST）
-// - /logout           - ログアウトエンドポイント（ブラウザリダイレクト）
+// 変更前（SPA直接）:
+//   ブラウザ → Cognito /oauth2/token（トークンがブラウザに露出）
+//
+// 変更後（BFF経由）:
+//   ブラウザ → BFF /auth/*（トークンはサーバーサイドのみ）
+//   → ブラウザにはHttpOnly CookieのセッションIDのみ存在
+//
+// BFF APIのベースURL:
+// - ローカル開発: '' （Viteプロキシが /auth/* を localhost:3000 に転送）
+// - Amplifyデプロイ: API Gateway URL （config.json の bffUrl から取得）
+//
+// 各関数は credentials: 'include' を指定してCookieを送受信します。
 
-let config = null
+// BFF APIのベースURL（initBffConfig で設定される）
+let bffBaseUrl = ''
 
 /**
- * Cognito設定を読み込む
- * 1. /config.json（Terraform生成）を試行
- * 2. 失敗した場合はVite環境変数にフォールバック
- *
- * @returns {Promise<object>} Cognito設定オブジェクト
+ * config.json からBFF設定を読み込み
+ * Amplifyデプロイ時: config.json の bffUrl を使用
+ * ローカル開発時: config.json が無い or bffUrl が無い → 空文字（Viteプロキシ）
  */
-export async function loadConfig() {
-  if (config) return config
-
+export async function initBffConfig() {
   try {
     const res = await fetch('/config.json')
     if (res.ok) {
-      config = await res.json()
-      // redirectUri/logoutUri が未設定の場合、現在のオリジンから生成
-      if (!config.redirectUri) {
-        config.redirectUri = `${window.location.origin}/callback`
+      const config = await res.json()
+      if (config.bffUrl) {
+        bffBaseUrl = config.bffUrl.replace(/\/$/, '') // 末尾スラッシュ除去
       }
-      if (!config.logoutUri) {
-        config.logoutUri = `${window.location.origin}/`
-      }
-      return config
     }
   } catch {
-    // config.json が存在しない場合（ローカル開発時など）
+    // config.json が見つからない場合はローカル開発（プロキシ利用）
   }
-
-  // Vite環境変数にフォールバック
-  config = {
-    region: import.meta.env.VITE_COGNITO_REGION,
-    userPoolId: import.meta.env.VITE_USER_POOL_ID,
-    clientId: import.meta.env.VITE_CLIENT_ID,
-    cognitoDomain: import.meta.env.VITE_COGNITO_DOMAIN,
-    redirectUri: import.meta.env.VITE_REDIRECT_URI || `${window.location.origin}/callback`,
-    logoutUri: import.meta.env.VITE_LOGOUT_URI || `${window.location.origin}/`,
-  }
-  return config
 }
 
 /**
- * Hosted UI の認可URLを生成
- * PKCEのcode_challengeを含めてリダイレクトします。
- *
- * @param {object} cfg - loadConfig()の戻り値
- * @param {string} codeChallenge - generateCodeChallenge()で生成した値
- * @returns {string} 認可エンドポイントのURL
+ * BFF APIのベースURLを取得（同期版）
+ * LoginButton等のコンポーネントから使用
  */
-export function getAuthorizeUrl(cfg, codeChallenge) {
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: cfg.clientId,
-    redirect_uri: cfg.redirectUri,
-    scope: 'openid email profile',
-    code_challenge_method: 'S256',
-    code_challenge: codeChallenge,
-  })
-  return `https://${cfg.cognitoDomain}/oauth2/authorize?${params}`
+export function getBffUrl() {
+  return bffBaseUrl
 }
 
 /**
- * 認可コードをトークンに交換する
- * PKCEのcode_verifierを添えてPOSTリクエストを送信します。
+ * BFF /auth/me を呼び出し、認証状態を取得
+ * HttpOnly CookieのセッションIDが自動送信されます。
  *
- * Cognito /oauth2/token エンドポイントは
- * application/x-www-form-urlencoded 形式のみ受け付けます。
- *
- * @param {object} cfg - loadConfig()の戻り値
- * @param {string} code - コールバックURLのcodeパラメータ
- * @param {string} codeVerifier - 認可リクエスト前に保存したcode_verifier
- * @returns {Promise<object>} { access_token, id_token, refresh_token, token_type, expires_in }
+ * @returns {Promise<object>} { authenticated, user?, claims?, tokenStatus? }
  */
-export async function exchangeCodeForTokens(cfg, code, codeVerifier) {
-  const params = new URLSearchParams({
-    grant_type: 'authorization_code',
-    client_id: cfg.clientId,
-    code,
-    redirect_uri: cfg.redirectUri,
-    code_verifier: codeVerifier,
-  })
+export async function fetchAuthMe() {
+  const res = await fetch(`${bffBaseUrl}/auth/me`, { credentials: 'include' })
+  return res.json()
+}
 
-  const response = await fetch(`https://${cfg.cognitoDomain}/oauth2/token`, {
+/**
+ * BFF /auth/logout を呼び出し、セッションを破棄
+ * CSRFトークンをヘッダーに付与する必要があります。
+ *
+ * @returns {Promise<object>} { logoutUrl }
+ */
+export async function postAuthLogout() {
+  const csrfToken = getCsrfToken()
+  const res = await fetch(`${bffBaseUrl}/auth/logout`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString(),
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-csrf-token': csrfToken,
+    },
   })
-
-  if (!response.ok) {
-    const errorBody = await response.text()
-    throw new Error(`Token exchange failed (${response.status}): ${errorBody}`)
-  }
-
-  return response.json()
+  return res.json()
 }
 
 /**
- * Hosted UI のログアウトURLを生成
- * ログアウト後、logout_uriにリダイレクトされます。
+ * BFF /auth/refresh を呼び出し、トークンをリフレッシュ
+ * CSRFトークンをヘッダーに付与する必要があります。
  *
- * @param {object} cfg - loadConfig()の戻り値
- * @returns {string} ログアウトエンドポイントのURL
+ * @returns {Promise<object>} { success, message, tokenStatus? }
  */
-export function getLogoutUrl(cfg) {
-  const params = new URLSearchParams({
-    client_id: cfg.clientId,
-    logout_uri: cfg.logoutUri,
+export async function postAuthRefresh() {
+  const csrfToken = getCsrfToken()
+  const res = await fetch(`${bffBaseUrl}/auth/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-csrf-token': csrfToken,
+    },
   })
-  return `https://${cfg.cognitoDomain}/logout?${params}`
+  return res.json()
+}
+
+/**
+ * CSRFトークンをCookieから取得
+ *
+ * BFFが設定した csrf_token Cookie（HttpOnly=false）を読み取ります。
+ * このトークンをリクエストヘッダーに付与することで、
+ * 正規のフロントエンドからのリクエストであることを証明します。
+ *
+ * @returns {string} CSRFトークン
+ */
+function getCsrfToken() {
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/)
+  return match ? match[1] : ''
 }

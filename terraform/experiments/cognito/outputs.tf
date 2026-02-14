@@ -41,6 +41,12 @@ output "user_pool_client_name" {
   value       = aws_cognito_user_pool_client.main.name
 }
 
+output "user_pool_client_secret" {
+  description = "Cognito User Pool Client Secret（BFFでのトークン交換に必要。機密情報）"
+  value       = aws_cognito_user_pool_client.main.client_secret
+  sensitive   = true
+}
+
 # ========================================
 # User Pool Domain
 # ========================================
@@ -98,8 +104,9 @@ output "test_commands_info" {
 output "deployed_urls" {
   description = "デプロイされたURLの一覧"
   value = {
-    amplify_app   = "https://main.${aws_amplify_app.frontend.default_domain}"
-    hosted_ui     = var.create_user_pool_domain ? "https://${aws_cognito_user_pool_domain.main[0].domain}.auth.${var.aws_region}.amazoncognito.com/login" : null
+    amplify_app      = "https://main.${aws_amplify_app.frontend.default_domain}"
+    bff_api          = aws_apigatewayv2_stage.bff.invoke_url
+    hosted_ui        = var.create_user_pool_domain ? "https://${aws_cognito_user_pool_domain.main[0].domain}.auth.${var.aws_region}.amazoncognito.com/login" : null
     cognito_endpoint = "https://cognito-idp.${var.aws_region}.amazonaws.com"
   }
 }
@@ -139,4 +146,23 @@ output "amplify_default_domain" {
 output "amplify_app_url" {
   description = "Amplify アプリケーションURL（ブラウザでアクセス可能）"
   value       = "https://main.${aws_amplify_app.frontend.default_domain}"
+}
+
+# ========================================
+# BFF Lambda + API Gateway
+# ========================================
+
+output "bff_api_url" {
+  description = "BFF API Gateway URL（フロントエンドからのAPI呼び出し先）"
+  value       = aws_apigatewayv2_stage.bff.invoke_url
+}
+
+output "bff_lambda_function_name" {
+  description = "BFF Lambda関数名（ログ確認等に使用）"
+  value       = aws_lambda_function.bff.function_name
+}
+
+output "bff_dynamodb_table_name" {
+  description = "BFFセッション用DynamoDBテーブル名"
+  value       = aws_dynamodb_table.bff_sessions.name
 }

@@ -29,10 +29,23 @@ mfa_configuration = "OPTIONAL"
 create_user_pool_domain = true
 
 # Callback/Logout URLs
-# ローカル開発用にlocalhost:5173を追加
+# ローカル開発用にlocalhost:5173（Vite）とlocalhost:3000（BFF直接）を追加
 # Amplify URLは初回デプロイ後に追加してください
-callback_urls = ["http://localhost:5173/callback", "https://main.d2yh1v5oo438xg.amplifyapp.com/callback"]
-logout_urls   = ["http://localhost:5173/", "https://main.d2yh1v5oo438xg.amplifyapp.com/"]
+# API Gateway URLも初回デプロイ後に追加してください（terraform output bff_api_url で確認）
+callback_urls = [
+  "http://localhost:5173/callback",
+  "http://localhost:3000/auth/callback",
+  "https://main.d2yh1v5oo438xg.amplifyapp.com/callback",
+  # 初回デプロイ後、以下のようにAPI GatewayのコールバックURLを追加:
+  # "https://<api-id>.execute-api.ap-northeast-1.amazonaws.com/auth/callback",
+]
+logout_urls = [
+  "http://localhost:5173/",
+  "http://localhost:3000/",
+  "https://main.d2yh1v5oo438xg.amplifyapp.com/",
+  # 初回デプロイ後、以下のようにAPI GatewayのログアウトURLを追加:
+  # "https://main.d2yh1v5oo438xg.amplifyapp.com/",
+]
 
 # Token Validity Period
 access_token_validity   = 1  # 1 hour

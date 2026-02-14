@@ -203,10 +203,11 @@ resource "aws_cognito_user_pool_client" "main" {
 
   # Client Secret
   # -------------
-  # クライアントシークレットを生成しません。
-  # サーバーサイドアプリケーションで必要な場合は、
-  # generate_secret = true に設定してください。
-  generate_secret = false
+  # BFF（Backend For Frontend）パターンでは、サーバーサイドでトークン交換を行うため、
+  # Confidential Clientとしてclient_secretを使用します。
+  # OAuth 2.1のベストプラクティスでは、PKCE + client_secret の併用が推奨されます。
+  # （PKCEはリダイレクト傍受攻撃を防ぎ、client_secretはクライアント認証を提供）
+  generate_secret = true
 
   # Token Revocation
   # ----------------

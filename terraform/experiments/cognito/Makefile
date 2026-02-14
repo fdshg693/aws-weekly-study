@@ -10,7 +10,7 @@
 #   make destroy  - リソース削除（開発環境）
 #   make test     - 認証フローテスト
 
-.PHONY: help init fmt validate plan apply destroy output test clean plan-prod apply-prod destroy-prod frontend-install frontend-dev frontend-build frontend-deploy
+.PHONY: help init fmt validate plan apply destroy output test clean plan-prod apply-prod destroy-prod frontend-install frontend-dev frontend-build frontend-deploy bff-install bff-dev bff-package bff-logs bff-invoke dev
 
 # デフォルトの環境設定
 ENV ?= dev
@@ -45,7 +45,7 @@ plan: init ## デプロイ計画を表示（開発環境）
 	@echo "📋 Planning deployment for dev environment..."
 	terraform plan -var-file="dev.tfvars"
 
-apply: init ## デプロイ実行（開発環境）+ フロントエンドデプロイ
+apply: init bff-package ## デプロイ実行（開発環境）+ フロントエンドデプロイ
 	@echo "🚀 Applying Terraform configuration for dev environment..."
 	terraform apply -var-file="dev.tfvars"
 	@echo ""
@@ -167,5 +167,52 @@ frontend-deploy: frontend-build ## フロントエンドをAmplifyにデプロ�
 	aws amplify start-deployment --app-id $$APP_ID --branch-name main --job-id $$JOB_ID --region $(REGION) > /dev/null && \
 	rm -f /tmp/amplify-deploy.zip && \
 	echo "✅ Deployed to: $$APP_URL"
+
+# ========================================
+# BFF Commands
+# ========================================
+
+bff-install: ## BFFの依存関係をインストール
+	@echo "Installing BFF dependencies..."
+	cd bff && npm install
+
+bff-dev: ## BFF開発サーバーを起動（localhost:3000）
+	@echo "Starting BFF dev server on http://localhost:3000..."
+	cd bff && npm run dev
+
+bff-package: ## BFF Lambdaパッケージを準備（npm ci --omit=dev）
+	@echo "📦 Packaging BFF for Lambda..."
+	cd bff && npm ci --omit=dev
+
+bff-logs: ## BFF Lambdaのログをtail表示
+	@FUNC_NAME=$$(terraform output -raw bff_lambda_function_name) && \
+	aws logs tail /aws/lambda/$$FUNC_NAME --follow --region $(REGION)
+
+bff-invoke: ## BFF Lambdaのヘルスチェック
+	@API_URL=$$(terraform output -raw bff_api_url) && \
+	echo "BFF API URL: $$API_URL" && \
+	curl -s "$$API_URL/health" | python3 -m json.tool
+
+dev: ## 開発環境の起動手順を表示（フロントエンド + BFF）
+	@echo "========================================="
+	@echo " ローカル開発（BFF + Frontend）"
+	@echo "========================================="
+	@echo ""
+	@echo "ターミナル1: BFFサーバー起動"
+	@echo "  make bff-dev"
+	@echo ""
+	@echo "ターミナル2: フロントエンド起動"
+	@echo "  make frontend-dev"
+	@echo ""
+	@echo "ブラウザでアクセス:"
+	@echo "  http://localhost:5173"
+	@echo ""
+	@echo "※ Viteプロキシにより /auth/* は自動的にBFF（:3000）に転送されます"
+	@echo ""
+	@echo "========================================="
+	@echo " デプロイ済み環境"
+	@echo "========================================="
+	@echo "フロントエンド: $$(terraform output -raw amplify_app_url 2>/dev/null || echo 'Not deployed')"
+	@echo "BFF API:        $$(terraform output -raw bff_api_url 2>/dev/null || echo 'Not deployed')"
 
 .DEFAULT_GOAL := help

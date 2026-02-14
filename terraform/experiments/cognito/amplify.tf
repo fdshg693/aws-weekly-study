@@ -63,6 +63,30 @@ resource "local_file" "frontend_config" {
     cognitoDomain = "${aws_cognito_user_pool_domain.main[0].domain}.auth.${var.aws_region}.amazoncognito.com"
     redirectUri   = "https://main.${aws_amplify_app.frontend.default_domain}/callback"
     logoutUri     = "https://main.${aws_amplify_app.frontend.default_domain}/"
+    # BFF API Gateway URL
+    # フロントエンドがBFF APIを呼び出すためのベースURL。
+    # ローカル開発ではViteプロキシを使用するため、この値は無視されます。
+    bffUrl = aws_apigatewayv2_stage.bff.invoke_url
   })
   filename = "${path.module}/frontend/public/config.json"
+}
+
+# ========================================
+# BFF Config File
+# ========================================
+# BFFサーバーが使用する設定ファイルを生成します。
+# client_secretを含むため、フロントエンドの公開ディレクトリには置きません。
+# このファイルはgitignore対象です。
+
+resource "local_file" "bff_config" {
+  content = jsonencode({
+    region        = var.aws_region
+    userPoolId    = aws_cognito_user_pool.main.id
+    clientId      = aws_cognito_user_pool_client.main.id
+    clientSecret  = aws_cognito_user_pool_client.main.client_secret
+    cognitoDomain = "${aws_cognito_user_pool_domain.main[0].domain}.auth.${var.aws_region}.amazoncognito.com"
+    redirectUri   = "http://localhost:3000/auth/callback"
+    logoutUri     = "http://localhost:3000/"
+  })
+  filename = "${path.module}/bff/config.json"
 }
