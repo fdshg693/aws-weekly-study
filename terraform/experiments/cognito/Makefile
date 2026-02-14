@@ -45,9 +45,12 @@ plan: init ## デプロイ計画を表示（開発環境）
 	@echo "📋 Planning deployment for dev environment..."
 	terraform plan -var-file="dev.tfvars"
 
-apply: init ## デプロイ実行（開発環境）
+apply: init ## デプロイ実行（開発環境）+ フロントエンドデプロイ
 	@echo "🚀 Applying Terraform configuration for dev environment..."
 	terraform apply -var-file="dev.tfvars"
+	@echo ""
+	@echo "📦 Deploying frontend to Amplify..."
+	@$(MAKE) frontend-deploy
 
 destroy: ## リソース削除（開発環境）
 	@echo "💥 Destroying dev environment resources..."
@@ -146,11 +149,16 @@ frontend-dev: ## フロントエンド開発サーバーを起動（localhost:51
 
 frontend-build: ## フロントエンドをビルド
 	@echo "🔨 Building frontend..."
+	@if [ ! -d frontend/node_modules ]; then \
+		echo "📦 Installing frontend dependencies first..."; \
+		cd frontend && npm install; \
+	fi
 	cd frontend && npm run build
 
 frontend-deploy: frontend-build ## フロントエンドをAmplifyにデプロイ
 	@echo "🚀 Deploying frontend to Amplify..."
 	@APP_ID=$$(terraform output -raw amplify_app_id) && \
+	APP_URL=$$(terraform output -raw amplify_app_url) && \
 	cd frontend/dist && zip -r /tmp/amplify-deploy.zip . && \
 	DEPLOY_INFO=$$(aws amplify create-deployment --app-id $$APP_ID --branch-name main --region $(REGION) --output json) && \
 	UPLOAD_URL=$$(echo $$DEPLOY_INFO | python3 -c "import sys,json; print(json.load(sys.stdin)['zipUploadUrl'])") && \
@@ -158,6 +166,6 @@ frontend-deploy: frontend-build ## フロントエンドをAmplifyにデプロ�
 	curl -s --request PUT --upload-file /tmp/amplify-deploy.zip "$$UPLOAD_URL" > /dev/null && \
 	aws amplify start-deployment --app-id $$APP_ID --branch-name main --job-id $$JOB_ID --region $(REGION) > /dev/null && \
 	rm -f /tmp/amplify-deploy.zip && \
-	echo "✅ Deployed to: $$(terraform output -raw amplify_app_url)"
+	echo "✅ Deployed to: $$APP_URL"
 
 .DEFAULT_GOAL := help

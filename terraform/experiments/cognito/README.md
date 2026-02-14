@@ -1,11 +1,13 @@
 # AWS Cognito Authentication Infrastructure
 
 ## 概要
-TerraformでAWS Cognitoユーザープールを構築し、API認証基盤を実装します。ユーザー登録、ログイン、トークンリフレッシュなどの認証フローをCURLコマンドでテストできる、学習・実験用のインフラストラクチャです。
+TerraformでAWS Cognitoユーザープールを構築し、Vue 3 SPAによるログインアプリケーションとAPI認証基盤を実装します。ユーザー登録、ログイン、トークンリフレッシュなどの認証フローを、ブラウザ（Vue SPA）とCURLコマンドの両方でテストできる、学習・実験用のインフラストラクチャです。
 
 ### 技術スタック
 - **Terraform** v1.0+ - インフラストラクチャプロビジョニング
 - **AWS Cognito** - ユーザー認証・認可サービス
+- **AWS Amplify Hosting** - Vue SPAの静的サイトホスティング
+- **Vue 3 + Vite** - フロントエンドSPA（手動PKCE実装）
 - **AWS CLI / CURL** - APIテストツール
 
 ### 作成物
@@ -13,8 +15,10 @@ TerraformでAWS Cognitoユーザープールを構築し、API認証基盤を実
 - **Cognito User Pool**: ユーザーディレクトリとパスワードポリシー
 - **User Pool Client**: API認証用クライアント（USER_PASSWORD_AUTH有効）
 - **User Pool Domain**: Hosted UIアクセス用ドメイン（オプション）
+- **Amplify Hosting**: Vue SPAのホスティング基盤（手動デプロイ）
+- **Vue 3 SPA**: PKCE認証フロー対応のログインアプリケーション
 
-これにより、メールアドレスベースの認証システムが即座に利用可能になり、サインアップ、ログイン、トークンリフレッシュなどの認証フローをAPI経由でテストできます。
+これにより、メールアドレスベースの認証システムが即座に利用可能になり、サインアップ、ログイン、トークンリフレッシュなどの認証フローをブラウザおよびAPI経由でテストできます。
 
 ## 構成ファイル
 
@@ -22,148 +26,46 @@ TerraformでAWS Cognitoユーザープールを構築し、API認証基盤を実
 - **provider.tf** - AWSプロバイダー設定
 - **variables.tf** - 変数定義（パスワードポリシー、トークン有効期限など）
 - **cognito.tf** - Cognitoユーザープール、クライアント、ドメイン定義
-- **outputs.tf** - User Pool ID、Client IDなどの出力値
+- **amplify.tf** - Amplify Hostingリソースとfrontend設定ファイル生成
+- **outputs.tf** - User Pool ID、Client ID、デプロイURL等の出力値
 - **dev.tfvars** - 開発環境用の変数値
-- **PLAN.md** - プロジェクトの計画ドキュメント
+
+### フロントエンド（`frontend/`）
+- **Vue 3 + Vite** によるSPA
+- `src/auth/pkce.js` - PKCE（RFC 7636）のcode_verifier/code_challenge生成（Web Crypto API）
+- `src/auth/cognito.js` - Cognito OAuthエンドポイント（authorize, token, logout）
+- `src/auth/tokenStore.js` - sessionStorageベースのトークン管理 + JWTデコード
+- `src/components/` - LoginButton, LogoutButton, UserInfo, TokenDetails
+- aws-amplify SDKを使わず手動でPKCEを実装（教育目的）
+
+### テスト
+- **test_auth_flow.sh** - E2E認証フローテスト（sign-up, login, token refresh等）
 
 ## デプロイ手順
 
 ### 1. 初期化
 ```bash
-cd /Users/seiwan/CodeRoot/AWS/aws-weekly-study/terraform/experiments/cognito
-terraform init
+make init
 ```
 
-### 2. 計画確認
+### 2. 計画確認・デプロイ
 ```bash
-terraform plan -var-file="dev.tfvars"
+make plan    # 計画確認
+make apply   # デプロイ（Amplifyへのフロントエンドデプロイも自動実行）
 ```
 
-### 3. デプロイ
+### 3. 出力値の確認
 ```bash
-terraform apply -var-file="dev.tfvars"
+make output
 ```
 
-### 4. 出力値の確認
-```bash
-terraform output
-```
+デプロイされたURL（Amplify SPA、Hosted UI）や認証情報が表示されます。
 
-必要な情報（User Pool ID、Client ID、Region）が表示されます。これらをメモしてテストに使用してください。
-
-## 認証フローのテスト
-
-デプロイ後、以下のCURLコマンドで認証フローをテストできます。
-
-### 環境変数の設定
-```bash
-# Terraform outputから値を取得
-export REGION=$(terraform output -raw aws_region)
-export USER_POOL_ID=$(terraform output -raw user_pool_id)
-export CLIENT_ID=$(terraform output -raw user_pool_client_id)
-export COGNITO_ENDPOINT=$(terraform output -raw cognito_idp_endpoint)
-
-# テストユーザー情報
-export TEST_EMAIL="test@example.com"
-export TEST_PASSWORD="TestPass123!"
-```
-
-### 1. ユーザー登録（Sign Up）
-```bash
-aws cognito-idp sign-up \
-  --region $REGION \
-  --client-id $CLIENT_ID \
-  --username $TEST_EMAIL \
-  --password $TEST_PASSWORD \
-  --user-attributes Name=email,Value=$TEST_EMAIL Name=name,Value="Test User"
-```
-
-**期待される結果**: ユーザー作成成功、メール検証コードが送信されます。
-
-### 2. メール検証（Confirm Sign Up）
-```bash
-# メールで受信した検証コードを指定
-export VERIFICATION_CODE="123456"
-
-aws cognito-idp confirm-sign-up \
-  --region $REGION \
-  --client-id $CLIENT_ID \
-  --username $TEST_EMAIL \
-  --confirmation-code $VERIFICATION_CODE
-```
-
-### 3. ログイン（Initiate Auth）
-```bash
-aws cognito-idp initiate-auth \
-  --region $REGION \
-  --auth-flow USER_PASSWORD_AUTH \
-  --client-id $CLIENT_ID \
-  --auth-parameters USERNAME=$TEST_EMAIL,PASSWORD=$TEST_PASSWORD \
-  --query 'AuthenticationResult.[AccessToken,IdToken,RefreshToken]' \
-  --output json | jq -r '.[]' > /tmp/cognito_tokens.txt
-```
-
-**期待される結果**: アクセストークン、IDトークン、リフレッシュトークンが取得できます。
-
-トークンを環境変数に保存:
-```bash
-export ACCESS_TOKEN=$(sed -n '1p' /tmp/cognito_tokens.txt)
-export ID_TOKEN=$(sed -n '2p' /tmp/cognito_tokens.txt)
-export REFRESH_TOKEN=$(sed -n '3p' /tmp/cognito_tokens.txt)
-```
-
-### 4. トークンの検証
-IDトークンのデコードと内容確認:
-```bash
-# jq を使ってJWTをデコード（base64デコードのみ、署名検証なし）
-echo $ID_TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
-```
-
-### 5. ユーザー情報の取得
-```bash
-aws cognito-idp get-user \
-  --region $REGION \
-  --access-token $ACCESS_TOKEN
-```
-
-### 6. トークンリフレッシュ
-```bash
-aws cognito-idp initiate-auth \
-  --region $REGION \
-  --auth-flow REFRESH_TOKEN_AUTH \
-  --client-id $CLIENT_ID \
-  --auth-parameters REFRESH_TOKEN=$REFRESH_TOKEN
-```
-
-### 7. パスワード変更
-```bash
-export NEW_PASSWORD="NewTestPass456!"
-
-aws cognito-idp change-password \
-  --region $REGION \
-  --previous-password $TEST_PASSWORD \
-  --proposed-password $NEW_PASSWORD \
-  --access-token $ACCESS_TOKEN
-```
-
-### 8. ユーザー属性の更新
-```bash
-aws cognito-idp update-user-attributes \
-  --region $REGION \
-  --access-token $ACCESS_TOKEN \
-  --user-attributes Name=name,Value="Updated Test User"
-```
-
-## Hosted UIのテスト
-
-User Pool Domainが作成されている場合、ブラウザでHosted UIにアクセスできます。
-
-### Hosted UIのURLを取得
-```bash
-terraform output hosted_ui_url
-```
-
-`https://<your-domain>.auth.<region>.amazoncognito.com/login?client_id=<app_client_id>&response_type=code&scope=openid+email+profile&redirect_uri=<your_callback_url>`にアクセスして、サインアップやログインフローをブラウザで確認できます。
+### 初回デプロイ時の注意
+初回はAmplify URLが未確定のため、以下の手順が必要です：
+1. `make apply` でインフラ作成（Amplify URL確定）
+2. 出力されたAmplify URLを `dev.tfvars` の `callback_urls` / `logout_urls` に追加
+3. 再度 `make apply` でcallback URLs更新 + フロントエンドデプロイ
 
 ## CURLを使用した直接APIコール
 
@@ -202,106 +104,6 @@ curl -X POST \
   $COGNITO_ENDPOINT/ | jq .
 ```
 
-## コードの特徴
-
-### 1. 柔軟な変数設計
-パスワードポリシー、トークン有効期限、MFA設定など、ほぼ全ての設定を変数化。環境（dev/prod）に応じて柔軟に調整可能です。
-
-### 2. セキュリティベストプラクティス
-- **メール検証**: 自動的にメールアドレスを検証
-- **パスワードポリシー**: 強固なパスワード要件（カスタマイズ可能）
-- **ユーザー存在チェック保護**: タイミング攻撃対策
-- **MFAサポート**: オプショナルまたは必須に設定可能
-
-### 3. 複数の認証フロー対応
-- **USER_PASSWORD_AUTH**: サーバーサイドアプリ向け
-- **USER_SRP_AUTH**: より安全なSRP認証
-- **REFRESH_TOKEN_AUTH**: トークンリフレッシュ
-
-### 4. Hosted UIサポート
-オプションでUser Pool Domainを作成し、Cognitoが提供するログインUIを即座に利用可能。フロントエンド開発前の認証フロー確認に便利です。
-
-### 5. 詳細なコメントと学習支援
-各リソースに日本語の詳細なコメントを付与。設定オプションの意味、ベストプラクティス、代替案などを記載し、学習に役立つ構成としています。
-
-### 6. 環境別の削除保護
-本番環境では削除保護を有効化し、誤削除を防止。開発環境では無効化し、素早い作り直しが可能です。
-
-## よくある設定のカスタマイズ
-
-### パスワードポリシーの変更
-`dev.tfvars`または`variables.tf`で以下を調整:
-```hcl
-minimum_password_length = 12  # より長いパスワードを要求
-require_symbols        = true  # 記号を必須にする
-```
-
-### トークン有効期限の変更
-```hcl
-access_token_validity  = 2   # 2時間に延長
-refresh_token_validity = 90  # 90日に延長
-```
-
-### MFAを必須にする
-```hcl
-mfa_configuration = "ON"
-```
-
-### 自己登録を無効化
-```hcl
-enable_self_registration = false
-```
-
-### カスタム属性の追加
-`cognito.tf`のschemaブロックに追加:
-```hcl
-schema {
-  name                = "phone_number"
-  attribute_data_type = "String"
-  required            = false
-  mutable             = true
-  
-  string_attribute_constraints {
-    min_length = 10
-    max_length = 20
-  }
-}
-```
-
-## トラブルシューティング
-
-### ユーザー登録時にメールが届かない
-- Cognitoのデフォルトメール送信には制限があります
-- 本格的な運用ではAmazon SESの設定を推奨
-- SES設定例（`cognito.tf`に追加）:
-```hcl
-email_configuration {
-  email_sending_account = "DEVELOPER"
-  source_arn            = "arn:aws:ses:REGION:ACCOUNT_ID:identity/your-email@example.com"
-}
-```
-
-### ドメインプレフィックスの競合エラー
-User Pool Domainのprefixはグローバルで一意である必要があります。`dev.tfvars`でユニークなprefixを指定してください:
-```hcl
-domain_prefix = "my-unique-prefix-12345"
-```
-
-### トークンの有効期限が短すぎる
-開発環境であれば、`dev.tfvars`で有効期限を長めに設定:
-```hcl
-access_token_validity  = 24  # 24時間
-refresh_token_validity = 365 # 1年
-```
-
-## クリーンアップ
-
-リソースを削除する場合:
-```bash
-terraform destroy -var-file="dev.tfvars"
-```
-
-**注意**: 本番環境では削除保護が有効になっています。削除する場合は、先に`deletion_protection`を`INACTIVE`に変更してapplyしてから、destroyを実行してください。
 
 ## 参考資料
 
@@ -318,19 +120,11 @@ terraform destroy -var-file="dev.tfvars"
 - [User Pool Authentication Flow](https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-authentication-flow.html)
 - [Using Tokens with User Pools](https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-tokens-with-identity-providers.html)
 
-## ライセンス
-
-このプロジェクトは学習・実験目的のサンプルコードです。自由に改変・利用してください。
-
 ## 次のステップ
 
 このCognito基盤を使って、以下のような発展的な実験が可能です：
 
 1. **Lambda Trigger**: PreSignUp、PostConfirmationなどのLambdaトリガーを追加
 2. **API Gateway統合**: CognitoオーソライザーでAPIを保護
-3. **フロントエンド統合**: React/VueアプリケーションからAmplify経由で認証
-4. **ソーシャルログイン**: Google、Facebook、AppleのIDプロバイダー連携
-5. **カスタムUI**: Hosted UIをカスタマイズ、またはSDKで独自UI実装
-6. **高度なセキュリティ**: リスクベース認証、アダプティブ認証の設定
-
-ぜひこの基盤をベースに、様々な認証機能を試してみてください！
+3. **ソーシャルログイン**: Google、Facebook、AppleのIDプロバイダー連携
+4. **高度なセキュリティ**: リスクベース認証、アダプティブ認証の設定

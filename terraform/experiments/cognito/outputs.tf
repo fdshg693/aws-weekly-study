@@ -92,6 +92,19 @@ output "test_commands_info" {
 }
 
 # ========================================
+# Deployed URLs
+# ========================================
+
+output "deployed_urls" {
+  description = "デプロイされたURLの一覧"
+  value = {
+    amplify_app   = "https://main.${aws_amplify_app.frontend.default_domain}"
+    hosted_ui     = var.create_user_pool_domain ? "https://${aws_cognito_user_pool_domain.main[0].domain}.auth.${var.aws_region}.amazoncognito.com/login" : null
+    cognito_endpoint = "https://cognito-idp.${var.aws_region}.amazonaws.com"
+  }
+}
+
+# ========================================
 # Summary
 # ========================================
 

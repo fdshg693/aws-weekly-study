@@ -31,8 +31,8 @@ create_user_pool_domain = true
 # Callback/Logout URLs
 # ローカル開発用にlocalhost:5173を追加
 # Amplify URLは初回デプロイ後に追加してください
-callback_urls = ["http://localhost:5173/callback", "https://claude.ai/new"]
-logout_urls   = ["http://localhost:5173/", "https://claude.ai/new"]
+callback_urls = ["http://localhost:5173/callback", "https://main.d2yh1v5oo438xg.amplifyapp.com/callback"]
+logout_urls   = ["http://localhost:5173/", "https://main.d2yh1v5oo438xg.amplifyapp.com/"]
 
 # Token Validity Period
 access_token_validity   = 1  # 1 hour

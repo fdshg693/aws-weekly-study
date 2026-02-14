@@ -16,6 +16,7 @@ make init
 make all
 
 # Plan and apply (dev environment)
+# apply はTerraform適用後にフロントエンドのビルド＆Amplifyデプロイも自動実行
 make plan
 make apply
 
@@ -84,5 +85,5 @@ Environment differentiation is handled via tfvars files (`dev.tfvars` / `prod.tf
 - The test script uses `admin-confirm-sign-up` to bypass email verification
 - Vue SPAはaws-amplify SDKを使わず手動でPKCE（RFC 7636）を実装（教育目的）
 - `frontend/public/config.json` はTerraformが生成するためgitignore対象
-- Amplify Hostingは手動デプロイ方式（Git連携なし）。`make frontend-deploy` でビルド＆デプロイ
+- Amplify Hostingは手動デプロイ方式（Git連携なし）。`make apply` でTerraform適用後に自動でビルド＆デプロイ実行
 - 初回デプロイ時はAmplify URLが未確定のため、2回 `make apply` が必要（1回目でAmplify作成→URLをdev.tfvarsに追加→2回目でcallback URLs更新）

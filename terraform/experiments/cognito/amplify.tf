@@ -16,13 +16,15 @@ resource "aws_amplify_app" "frontend" {
   name     = "${var.project_name}-${var.environment}-frontend"
   platform = "WEB"
 
-  # SPA Rewrite Rule
-  # ----------------
-  # すべてのパスを index.html にリライトします。
-  # これにより、ブラウザで /callback などのパスに直接アクセスしても
-  # Vue SPAが正しくルーティングを処理できます。
+  # SPA Rewrite Rules
+  # -----------------
+  # Amplifyはcustom_ruleを定義順に評価します。
+  #
+  # ルール1: 拡張子付きのパス（静的ファイル）はそのまま配信
+  # これがないと、config.json等の静的ファイルもindex.htmlにリライトされ、
+  # SPAが設定を読み込めなくなります。
   custom_rule {
-    source = "/<*>"
+    source = "</^[^.]+$|\\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>"
     status = "200"
     target = "/index.html"
   }
