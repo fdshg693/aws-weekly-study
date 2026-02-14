@@ -134,10 +134,16 @@ resource "aws_cognito_user_pool" "main" {
   # --------------------
   # デバイス記憶機能の設定。
   # ユーザーのデバイスを記憶することで、MFAをスキップできます。
-  device_configuration {
-    challenge_required_on_new_device      = true
-    device_only_remembered_on_user_prompt = true
-  }
+  #
+  # 注意: デバイス追跡を有効にすると、REFRESH_TOKEN_AUTHフローで
+  # SRPベースのデバイス確認（ConfirmDevice）が必要になります。
+  # CLIやbashスクリプトからのテストにはSRPライブラリが必要なため、
+  # SDK（Amplify, boto3等）を使用しない場合は無効にしてください。
+  #
+  # device_configuration {
+  #   challenge_required_on_new_device      = true
+  #   device_only_remembered_on_user_prompt = true
+  # }
 
   # Deletion Protection
   # -------------------

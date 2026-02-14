@@ -149,7 +149,6 @@ echo ""
 
 # トークンリフレッシュ
 echo -e "${YELLOW}[8/9] トークンをリフレッシュ中...${NC}"
-echo -e "${BLUE}  注意: USER_PASSWORD_AUTH フローでのリフレッシュトークンには既知の制限があります${NC}"
 # set -eの影響を受けないようにコマンドを実行
 set +e
 # jqを使用して安全にJSONを構築し、一時ファイルに保存
@@ -180,14 +179,6 @@ if [ $REFRESH_EXIT_CODE -eq 0 ]; then
 else
     echo -e "${RED}✗ トークンリフレッシュ失敗${NC}"
     echo "$REFRESH_RESULT"
-    echo ""
-    echo -e "${YELLOW}【既知の問題】${NC}"
-    echo -e "${YELLOW}Cognitoの USER_PASSWORD_AUTH フローで取得したリフレッシュトークンの使用には${NC}"
-    echo -e "${YELLOW}環境や設定によって制限がある場合があります。${NC}"
-    echo -e "${YELLOW}代替案:${NC}"
-    echo -e "  ${BLUE}1. トークン期限切れ時に再認証を実行${NC}"
-    echo -e "  ${BLUE}2. Hosted UIを使用したOAuthフローを検討${NC}"
-    echo -e "  ${BLUE}3. SDK（boto3, AWS Amplify等）の使用を検討${NC}"
 fi
 echo ""
 

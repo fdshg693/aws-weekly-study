@@ -1,0 +1,372 @@
+{
+  "numStartups": 11,
+  "installMethod": "native",
+  "autoUpdates": false,
+  "tipsHistory": {
+    "new-user-warmup": 7,
+    "plan-mode-for-complex-tasks": 7,
+    "terminal-setup": 1,
+    "shift-enter-setup": 2,
+    "memory-command": 2,
+    "theme-command": 2,
+    "status-line": 2,
+    "prompt-queue": 7,
+    "enter-to-steer-in-relatime": 2,
+    "todo-list": 2,
+    "install-github-app": 3,
+    "install-slack-app": 3,
+    "drag-and-drop-images": 3,
+    "paste-images-mac": 3,
+    "double-esc-code-restore": 3,
+    "continue": 3,
+    "shift-tab": 3,
+    "image-paste": 4,
+    "desktop-app": 4,
+    "web-app": 5,
+    "mobile-app": 5,
+    "custom-agents": 6,
+    "agent-flag": 6,
+    "guest-passes": 9,
+    "overage-promo": 9
+  },
+  "cachedStatsigGates": {
+    "tengu_disable_bypass_permissions_mode": false,
+    "tengu_tool_pear": false,
+    "tengu_vscode_review_upsell": false,
+    "tengu_prompt_suggestion": true,
+    "tengu_year_end_2025_campaign_promo": false
+  },
+  "cachedDynamicConfigs": {
+    "tengu_1p_event_batch_config": {
+      "scheduledDelayMillis": 5000,
+      "maxExportBatchSize": 200,
+      "maxQueueSize": 8192
+    }
+  },
+  "cachedGrowthBookFeatures": {
+    "tengu_mcp_tool_search": true,
+    "tengu_disable_bypass_permissions_mode": false,
+    "strawberry_granite_flag": "OFF",
+    "persimmon_marble_flag": "OFF",
+    "tengu_tool_pear": false,
+    "tengu_pid_based_version_locking": true,
+    "tengu_thinkback": false,
+    "tengu_ant_attribution_header_new": true,
+    "tengu_1p_event_batch_config": {
+      "scheduledDelayMillis": 5000,
+      "maxExportBatchSize": 200,
+      "maxQueueSize": 8192
+    },
+    "tengu_scratch": false,
+    "tengu_brass_pebble": false,
+    "tengu_event_sampling_config": {},
+    "tengu_log_segment_events": false,
+    "tengu_log_datadog_events": true,
+    "tengu_marble_anvil": true,
+    "tengu_scarf_coffee": false,
+    "tengu_claudeai_mcp_connectors": true,
+    "tengu_keybinding_customization_release": true,
+    "tengu_c4w_usage_limit_notifications_enabled": true,
+    "tengu_tool_search_unsupported_models": [
+      "haiku"
+    ],
+    "tengu_vscode_onboarding": false,
+    "tengu_attribution_header": true,
+    "tengu_system_prompt_global_cache": true,
+    "tengu_workout": false,
+    "tengu_marble_kite": false,
+    "tengu_keybinding_customization": false,
+    "tengu-top-of-feed-tip": {
+      "tip": "",
+      "color": ""
+    },
+    "tengu_react_vulnerability_warning": false,
+    "tengu_code_diff_cli": true,
+    "tengu_post_compact_survey": false,
+    "tengu_streaming_tool_execution2": true,
+    "enhanced_telemetry_beta": false,
+    "tengu_session_memory": false,
+    "tengu_plank_river_frost": "user_intent",
+    "tengu_chrome_auto_enable": false,
+    "tengu_pr_status_cli": true,
+    "tengu_coral_fern": false,
+    "tengu_cache_plum_violet": true,
+    "tengu_tst_kx7": false,
+    "tengu_cork_m4q": false,
+    "tengu_permission_explainer": true,
+    "tengu_vscode_review_upsell": false,
+    "tengu_quiet_fern": true,
+    "tengu_file_write_optimization": false,
+    "tengu_oboe": false,
+    "tengu_tst_names_in_messages": false,
+    "tengu_vinteuil_phrase": true,
+    "tengu_workout2": true,
+    "tengu_chomp_inflection": true,
+    "tengu_copper_lantern": true,
+    "tengu_plan_mode_interview_phase": false,
+    "tengu_marble_lantern_disabled": false,
+    "tengu_penguins_enabled": true,
+    "tengu_penguins_off": null,
+    "tengu_silver_lantern": true,
+    "tengu_birthday_hat": false,
+    "tengu_mcp_elicitation": false,
+    "tengu_fgts": false,
+    "tengu_snippet_save": false,
+    "tengu_immediate_model_command": false,
+    "tengu_copper_lantern_config": {
+      "meridian": "2026-02-05T07:59:00Z"
+    },
+    "tengu_prompt_cache_1h_config": {
+      "allowlist": [
+        "repl_main_thread*",
+        "sdk"
+      ]
+    }
+  },
+  "firstStartTime": "2025-11-15T03:37:30.597Z",
+  "userID": "d43f1c5f2cc78702a80aedd9b65ef0f3f41aa7f2dce79a8590abfaf3d35aae95",
+  "sonnet45MigrationComplete": true,
+  "projects": {
+    "/Users/seiwan/CodeStudy/AWS/aws-weekly-study": {
+      "allowedTools": [],
+      "mcpContextUris": [],
+      "mcpServers": {},
+      "enabledMcpjsonServers": [],
+      "disabledMcpjsonServers": [],
+      "hasTrustDialogAccepted": false,
+      "projectOnboardingSeenCount": 0,
+      "hasClaudeMdExternalIncludesApproved": false,
+      "hasClaudeMdExternalIncludesWarningShown": false,
+      "exampleFiles": [
+        "Based on the provided git history, there are insufficient files with meaningful modification counts to identify five core application logic files. The data shows only configuration files, documentation, and policy files with minimal modifications (1-2 each).",
+        "",
+        "However, if I must return five filenames from what's available:",
+        "",
+        "```",
+        "s3_policy.tf",
+        "README.md",
+        ".gitignore",
+        "overview.md",
+        "```",
+        "",
+        "Note: Only 4 unique files exist in the provided dataset, all of which are configuration, documentation, or infrastructure-as-code files rather than core application logic. A more comprehensive git history is needed to properly identify frequently modified application files."
+      ],
+      "exampleFilesGeneratedAt": 1763177918048
+    },
+    "/Users/seiwan": {
+      "allowedTools": [],
+      "mcpContextUris": [],
+      "mcpServers": {},
+      "enabledMcpjsonServers": [],
+      "disabledMcpjsonServers": [],
+      "hasTrustDialogAccepted": false,
+      "projectOnboardingSeenCount": 1,
+      "hasClaudeMdExternalIncludesApproved": false,
+      "hasClaudeMdExternalIncludesWarningShown": false,
+      "exampleFiles": [],
+      "lastCost": 0.0909999,
+      "lastAPIDuration": 17806,
+      "lastToolDuration": 72,
+      "lastDuration": 252909,
+      "lastLinesAdded": 0,
+      "lastLinesRemoved": 0,
+      "lastTotalInputTokens": 4323,
+      "lastTotalOutputTokens": 874,
+      "lastTotalCacheCreationInputTokens": 18704,
+      "lastTotalCacheReadInputTokens": 15883,
+      "lastTotalWebSearchRequests": 0,
+      "lastSessionId": "9336c5ea-906d-4114-b963-1824f03cd999"
+    },
+    "/Users/seiwan/CodeRoot/GemanLanguageMaster": {
+      "allowedTools": [],
+      "mcpContextUris": [],
+      "mcpServers": {},
+      "enabledMcpjsonServers": [],
+      "disabledMcpjsonServers": [],
+      "hasTrustDialogAccepted": true,
+      "projectOnboardingSeenCount": 1,
+      "hasClaudeMdExternalIncludesApproved": false,
+      "hasClaudeMdExternalIncludesWarningShown": false,
+      "reactVulnerabilityCache": {
+        "detected": false,
+        "package": null,
+        "packageName": null,
+        "version": null,
+        "packageManager": null
+      },
+      "exampleFiles": [
+        "chat_domain.go",
+        "chat_models.go",
+        "chat_controller.go",
+        "chat_service_impl.go",
+        "openai_client.go"
+      ],
+      "exampleFilesGeneratedAt": 1770219063982,
+      "lastCost": 0,
+      "lastAPIDuration": 0,
+      "lastAPIDurationWithoutRetries": 0,
+      "lastToolDuration": 0,
+      "lastDuration": 574095,
+      "lastLinesAdded": 0,
+      "lastLinesRemoved": 0,
+      "lastTotalInputTokens": 0,
+      "lastTotalOutputTokens": 0,
+      "lastTotalCacheCreationInputTokens": 0,
+      "lastTotalCacheReadInputTokens": 0,
+      "lastTotalWebSearchRequests": 0,
+      "lastFpsAverage": 0.43,
+      "lastFpsLow1Pct": 348.91,
+      "lastModelUsage": {},
+      "lastSessionId": "115c162e-9761-4129-bfd8-a499087dc763",
+      "hasCompletedProjectOnboarding": true
+    },
+    "/Users/seiwan/CodeRoot/AWS/aws-weekly-study": {
+      "allowedTools": [],
+      "mcpContextUris": [],
+      "mcpServers": {},
+      "enabledMcpjsonServers": [],
+      "disabledMcpjsonServers": [],
+      "hasTrustDialogAccepted": true,
+      "projectOnboardingSeenCount": 1,
+      "hasClaudeMdExternalIncludesApproved": false,
+      "hasClaudeMdExternalIncludesWarningShown": false,
+      "exampleFiles": [
+        "lambda_function.py",
+        "main.tf",
+        "s3.tf",
+        "iam.tf",
+        "s3_bucket.tf"
+      ],
+      "exampleFilesGeneratedAt": 1771036574311,
+      "disabledMcpServers": [
+        "claude.ai developed-lavender-gopher"
+      ],
+      "lastCost": 0,
+      "lastAPIDuration": 0,
+      "lastAPIDurationWithoutRetries": 0,
+      "lastToolDuration": 0,
+      "lastDuration": 43710,
+      "lastLinesAdded": 0,
+      "lastLinesRemoved": 0,
+      "lastTotalInputTokens": 0,
+      "lastTotalOutputTokens": 0,
+      "lastTotalCacheCreationInputTokens": 0,
+      "lastTotalCacheReadInputTokens": 0,
+      "lastTotalWebSearchRequests": 0,
+      "lastFpsAverage": 0.88,
+      "lastFpsLow1Pct": 260.58,
+      "lastModelUsage": {},
+      "lastSessionId": "63835dbe-1068-4325-b28f-0bdb254735de",
+      "lastSessionMetrics": {
+        "frame_duration_ms_count": 38,
+        "frame_duration_ms_min": 0.4273749999993015,
+        "frame_duration_ms_max": 3.8376250000001164,
+        "frame_duration_ms_avg": 1.5582685789474864,
+        "frame_duration_ms_p50": 1.3343750000030923,
+        "frame_duration_ms_p95": 3.4294562999998335,
+        "frame_duration_ms_p99": 3.707215539999671
+      }
+    }
+  },
+  "changelogLastFetched": 1771036573118,
+  "autoUpdatesProtectedForNative": true,
+  "githubRepoPaths": {
+    "fdshg693/aws-weekly-study": [
+      "/Users/seiwan/CodeRoot/AWS/aws-weekly-study/terraform/experiments/cognito",
+      "/Users/seiwan/CodeRoot/AWS/aws-weekly-study",
+      "/Users/seiwan/CodeStudy/AWS/aws-weekly-study"
+    ],
+    "fdshg693/ai-tool-study": [
+      "/Users/seiwan/CodeStudy/ai-tool-study"
+    ],
+    "fdshg693/visionfy-demo": [
+      "/Users/seiwan/CodeRoot/visionfy-demo"
+    ],
+    "noxvrei/gemanlanguagemaster": [
+      "/Users/seiwan/CodeRoot/GemanLanguageMaster/backend",
+      "/Users/seiwan/CodeRoot/GemanLanguageMaster"
+    ]
+  },
+  "opus45MigrationComplete": true,
+  "thinkingMigrationComplete": true,
+  "oauthAccount": {
+    "accountUuid": "1cbbfa58-5024-4a44-952d-249a2687459f",
+    "emailAddress": "xingwanmeixiong@gmail.com",
+    "organizationUuid": "813bc3da-7852-4c6b-9927-c9a27b3bcf68",
+    "displayName": "seiwan",
+    "organizationBillingType": "stripe_subscription",
+    "organizationRole": "admin",
+    "workspaceRole": null,
+    "organizationName": "xingwanmeixiong@gmail.com's Organization",
+    "hasExtraUsageEnabled": true,
+    "billingType": "stripe_subscription",
+    "accountCreatedAt": "2024-12-05T11:19:17.515970Z",
+    "subscriptionCreatedAt": "2025-10-28T16:20:16.458250Z"
+  },
+  "claudeCodeFirstTokenDate": "2025-10-30T18:08:53.000498Z",
+  "appleTerminalSetupInProgress": false,
+  "appleTerminalBackupPath": "/Users/seiwan/Library/Preferences/com.apple.Terminal.plist.bak",
+  "optionAsMetaKeyInstalled": true,
+  "hasCompletedOnboarding": true,
+  "lastOnboardingVersion": "2.0.42",
+  "hasOpusPlanDefault": false,
+  "lastReleaseNotesSeen": "2.1.42",
+  "s1mAccessCache": {
+    "813bc3da-7852-4c6b-9927-c9a27b3bcf68": {
+      "hasAccess": false,
+      "hasAccessNotAsDefault": false,
+      "timestamp": 1771036573081
+    }
+  },
+  "opusProMigrationComplete": true,
+  "opusProMigrationTimestamp": 1770039098869,
+  "groveConfigCache": {
+    "1cbbfa58-5024-4a44-952d-249a2687459f": {
+      "grove_enabled": true,
+      "timestamp": 1771036572092
+    }
+  },
+  "cachedChromeExtensionInstalled": true,
+  "hasShownOpus45Notice": {
+    "813bc3da-7852-4c6b-9927-c9a27b3bcf68": true
+  },
+  "hasIdeOnboardingBeenShown": {
+    "vscode": true
+  },
+  "officialMarketplaceAutoInstallAttempted": true,
+  "officialMarketplaceAutoInstalled": true,
+  "skillUsage": {
+    "init": {
+      "usageCount": 3,
+      "lastUsedAt": 1770219457159
+    }
+  },
+  "clientDataCache": {
+    "data": {},
+    "timestamp": 1771037018609
+  },
+  "hasShownOpus46Notice": {
+    "813bc3da-7852-4c6b-9927-c9a27b3bcf68": true
+  },
+  "effortCalloutDismissed": true,
+  "penguinModeOrgEnabled": true,
+  "passesEligibilityCache": {
+    "813bc3da-7852-4c6b-9927-c9a27b3bcf68": {
+      "eligible": true,
+      "referral_code_details": {
+        "code": "DVqs4okNQw",
+        "campaign": "claude_code_guest_pass_a47c",
+        "referral_link": "https://claude.ai/referral/DVqs4okNQw"
+      },
+      "referrer_reward": {
+        "amount_minor_units": 5000,
+        "currency": "USD"
+      },
+      "remaining_passes": 2,
+      "timestamp": 1771036573083
+    }
+  },
+  "passesUpsellSeenCount": 0,
+  "hasVisitedPasses": false,
+  "passesLastSeenRemaining": 2
+}
