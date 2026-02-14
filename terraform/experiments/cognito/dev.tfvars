@@ -36,15 +36,14 @@ callback_urls = [
   "http://localhost:5173/callback",
   "http://localhost:3000/auth/callback",
   "https://main.d2yh1v5oo438xg.amplifyapp.com/callback",
-  # 初回デプロイ後、以下のようにAPI GatewayのコールバックURLを追加:
-  # "https://<api-id>.execute-api.ap-northeast-1.amazonaws.com/auth/callback",
+  "https://main.d2yh1v5oo438xg.amplifyapp.com/auth/callback",
+  "https://jfk7a0817h.execute-api.ap-northeast-1.amazonaws.com/auth/callback",
 ]
 logout_urls = [
   "http://localhost:5173/",
   "http://localhost:3000/",
   "https://main.d2yh1v5oo438xg.amplifyapp.com/",
-  # 初回デプロイ後、以下のようにAPI GatewayのログアウトURLを追加:
-  # "https://main.d2yh1v5oo438xg.amplifyapp.com/",
+  "https://main.d2yh1v5oo438xg.amplifyapp.com/logout",
 ]
 
 # Token Validity Period

@@ -47,7 +47,7 @@ plan: init ## デプロイ計画を表示（開発環境）
 
 apply: init bff-package ## デプロイ実行（開発環境）+ フロントエンドデプロイ
 	@echo "🚀 Applying Terraform configuration for dev environment..."
-	terraform apply -var-file="dev.tfvars"
+	terraform apply -var-file="dev.tfvars" -auto-approve
 	@echo ""
 	@echo "📦 Deploying frontend to Amplify..."
 	@$(MAKE) frontend-deploy
