@@ -3,6 +3,11 @@
 **.tfstate**
 planfile
 
+**secret**
+**secrets**
+**SECRET**
+**SECRETS**
+
 # OS
 .DS_Store
 **.pem

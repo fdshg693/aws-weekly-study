@@ -227,17 +227,16 @@ resource "aws_cognito_user_pool_client" "main" {
   read_attributes  = ["email", "email_verified", "name"]
   write_attributes = ["email", "name"]
 
-  # OAuth Configuration (Optional)
-  # ------------------------------
+  # OAuth Configuration
+  # -------------------
   # Hosted UIやOAuthフローを使用する場合に設定します。
-  # 以下はコメントアウトしていますが、必要に応じて有効化できます。
-  #
-  # allowed_oauth_flows                  = ["code", "implicit"]
-  # allowed_oauth_flows_user_pool_client = true
-  # allowed_oauth_scopes                 = ["email", "openid", "profile"]
-  # callback_urls                        = ["https://example.com/callback"]
-  # logout_urls                          = ["https://example.com/logout"]
-  # supported_identity_providers         = ["COGNITO"]
+  # create_user_pool_domain = true の場合に自動的に有効化されます。
+  allowed_oauth_flows                  = var.create_user_pool_domain ? var.allowed_oauth_flows : []
+  allowed_oauth_flows_user_pool_client = var.create_user_pool_domain
+  allowed_oauth_scopes                 = var.create_user_pool_domain ? var.allowed_oauth_scopes : []
+  callback_urls                        = var.create_user_pool_domain ? var.callback_urls : null
+  logout_urls                          = var.create_user_pool_domain ? var.logout_urls : null
+  supported_identity_providers         = var.create_user_pool_domain ? var.supported_identity_providers : null
 }
 
 # ========================================

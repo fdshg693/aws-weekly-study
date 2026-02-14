@@ -168,6 +168,37 @@ variable "prevent_user_existence_errors" {
   }
 }
 
+# OAuth Configuration (Hosted UI)
+# --------------------------------
+
+variable "allowed_oauth_flows" {
+  description = "許可するOAuthフロー（code, implicit, client_credentials）"
+  type        = list(string)
+  default     = ["code"]
+}
+
+variable "allowed_oauth_scopes" {
+  description = "許可するOAuthスコープ"
+  type        = list(string)
+  default     = ["email", "openid", "profile"]
+}
+
+variable "callback_urls" {
+  description = "OAuth認証後のコールバックURL"
+  type        = list(string)
+}
+
+variable "logout_urls" {
+  description = "ログアウト後のリダイレクトURL"
+  type        = list(string)
+}
+
+variable "supported_identity_providers" {
+  description = "サポートするIDプロバイダー"
+  type        = list(string)
+  default     = ["COGNITO"]
+}
+
 # Tags
 # ----
 

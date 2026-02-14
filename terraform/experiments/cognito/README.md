@@ -163,7 +163,7 @@ User Pool Domainが作成されている場合、ブラウザでHosted UIにア�
 terraform output hosted_ui_url
 ```
 
-ブラウザで上記URLにアクセスすると、Cognitoが提供するログインページが表示されます。
+`https://<your-domain>.auth.<region>.amazoncognito.com/login?client_id=<app_client_id>&response_type=code&scope=openid+email+profile&redirect_uri=<your_callback_url>`にアクセスして、サインアップやログインフローをブラウザで確認できます。
 
 ## CURLを使用した直接APIコール
 
