@@ -10,7 +10,7 @@
 #   make destroy  - リソース削除（開発環境）
 #   make test     - 認証フローテスト
 
-.PHONY: help init fmt validate plan apply destroy output test clean plan-prod apply-prod destroy-prod
+.PHONY: help init fmt validate plan apply destroy output test clean plan-prod apply-prod destroy-prod frontend-install frontend-dev frontend-build frontend-deploy
 
 # デフォルトの環境設定
 ENV ?= dev
@@ -131,5 +131,33 @@ set-env: ## 環境変数を設定（source使用）
 	@echo "export CLIENT_ID=$$(terraform output -raw user_pool_client_id)"
 
 all: fmt validate plan ## フォーマット、検証、プランを実行
+
+# ========================================
+# Frontend Commands
+# ========================================
+
+frontend-install: ## フロントエンドの依存関係をインストール
+	@echo "📦 Installing frontend dependencies..."
+	cd frontend && npm install
+
+frontend-dev: ## フロントエンド開発サーバーを起動（localhost:5173）
+	@echo "🔧 Starting frontend dev server..."
+	cd frontend && npm run dev
+
+frontend-build: ## フロントエンドをビルド
+	@echo "🔨 Building frontend..."
+	cd frontend && npm run build
+
+frontend-deploy: frontend-build ## フロントエンドをAmplifyにデプロイ
+	@echo "🚀 Deploying frontend to Amplify..."
+	@APP_ID=$$(terraform output -raw amplify_app_id) && \
+	cd frontend/dist && zip -r /tmp/amplify-deploy.zip . && \
+	DEPLOY_INFO=$$(aws amplify create-deployment --app-id $$APP_ID --branch-name main --region $(REGION) --output json) && \
+	UPLOAD_URL=$$(echo $$DEPLOY_INFO | python3 -c "import sys,json; print(json.load(sys.stdin)['zipUploadUrl'])") && \
+	JOB_ID=$$(echo $$DEPLOY_INFO | python3 -c "import sys,json; print(json.load(sys.stdin)['jobId'])") && \
+	curl -s --request PUT --upload-file /tmp/amplify-deploy.zip "$$UPLOAD_URL" > /dev/null && \
+	aws amplify start-deployment --app-id $$APP_ID --branch-name main --job-id $$JOB_ID --region $(REGION) > /dev/null && \
+	rm -f /tmp/amplify-deploy.zip && \
+	echo "✅ Deployed to: $$(terraform output -raw amplify_app_url)"
 
 .DEFAULT_GOAL := help

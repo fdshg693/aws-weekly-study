@@ -207,3 +207,12 @@ variable "additional_tags" {
   type        = map(string)
   default     = {}
 }
+
+# Amplify Hosting
+# ---------------
+
+variable "create_amplify_app" {
+  description = "Amplify Hostingアプリを作成するか（Vue SPAの配信に必要）"
+  type        = bool
+  default     = true
+}

@@ -28,8 +28,11 @@ mfa_configuration = "OPTIONAL"
 # User Pool Domain (Hosted UIテスト用)
 create_user_pool_domain = true
 
-callback_urls = ["https://claude.ai/new"]
-logout_urls = ["https://claude.ai/new"]
+# Callback/Logout URLs
+# ローカル開発用にlocalhost:5173を追加
+# Amplify URLは初回デプロイ後に追加してください
+callback_urls = ["http://localhost:5173/callback", "https://claude.ai/new"]
+logout_urls   = ["http://localhost:5173/", "https://claude.ai/new"]
 
 # Token Validity Period
 access_token_validity   = 1  # 1 hour

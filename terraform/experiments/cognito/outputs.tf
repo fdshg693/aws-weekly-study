@@ -108,3 +108,22 @@ output "deployment_summary" {
     hosted_ui_available = var.create_user_pool_domain
   }
 }
+
+# ========================================
+# Amplify Hosting
+# ========================================
+
+output "amplify_app_id" {
+  description = "Amplify App ID（手動デプロイに使用）"
+  value       = aws_amplify_app.frontend.id
+}
+
+output "amplify_default_domain" {
+  description = "Amplify デフォルトドメイン"
+  value       = aws_amplify_app.frontend.default_domain
+}
+
+output "amplify_app_url" {
+  description = "Amplify アプリケーションURL（ブラウザでアクセス可能）"
+  value       = "https://main.${aws_amplify_app.frontend.default_domain}"
+}
