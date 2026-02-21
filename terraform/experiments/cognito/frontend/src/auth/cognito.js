@@ -25,16 +25,25 @@ let bffBaseUrl = ''
  * ローカル開発時: config.json が無い or bffUrl が無い → 空文字（Viteプロキシ）
  */
 export async function initBffConfig() {
+  const config = await loadConfig()
+  if (config?.bffUrl) {
+    bffBaseUrl = config.bffUrl.replace(/\/$/, '')
+    console.log('[auth] クラウド環境: BFF URL =', bffBaseUrl)
+  } else {
+    console.log('[auth] ローカル環境: Viteプロキシ使用')
+  }
+}
+
+/**
+ * config.json を読み込む
+ * @returns {Promise<object|null>} 設定オブジェクト、取得できない場合は null
+ */
+async function loadConfig() {
   try {
     const res = await fetch('/config.json')
-    if (res.ok) {
-      const config = await res.json()
-      if (config.bffUrl) {
-        bffBaseUrl = config.bffUrl.replace(/\/$/, '') // 末尾スラッシュ除去
-      }
-    }
+    return res.ok ? await res.json() : null
   } catch {
-    // config.json が見つからない場合はローカル開発（プロキシ利用）
+    return null
   }
 }
 
