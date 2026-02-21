@@ -181,7 +181,7 @@ resource "aws_lambda_function" "bff" {
       # URL設定
       # REDIRECT_URI: API GatewayのURLをベースにコールバックURLを設定
       # FRONTEND_ORIGIN: AmplifyのURLをフロントエンドオリジンとして設定
-      REDIRECT_URI    = "${aws_apigatewayv2_stage.bff.invoke_url}/auth/callback"
+      REDIRECT_URI    = "${trimsuffix(aws_apigatewayv2_stage.bff.invoke_url, "/")}/auth/callback"
       LOGOUT_URI      = "https://main.${aws_amplify_app.frontend.default_domain}/"
       FRONTEND_ORIGIN = "https://main.${aws_amplify_app.frontend.default_domain}"
 

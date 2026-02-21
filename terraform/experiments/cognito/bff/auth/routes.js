@@ -85,7 +85,7 @@ import {
   SESSION_COOKIE_NAME,
 } from './session.js'
 import { verifyIdToken, verifyAccessToken } from './jwt.js'
-import { csrfTokenMiddleware, csrfProtectionMiddleware } from './csrf.js'
+import { csrfTokenMiddleware, csrfProtectionMiddleware, CSRF_COOKIE_NAME } from './csrf.js'
 
 export function authRouter(config) {
   const router = Router()
@@ -265,10 +265,16 @@ export function authRouter(config) {
     const sessionId = req.cookies[SESSION_COOKIE_NAME]
     const session = await getSession(sessionId)
 
+    // CSRFトークンをレスポンスボディに含める
+    // クロスオリジン環境ではdocument.cookieで他ドメインのCookieを読めないため、
+    // レスポンスボディ経由でフロントエンドにCSRFトークンを渡す
+    const csrfToken = req.cookies[CSRF_COOKIE_NAME] || ''
+
     if (!session) {
       return res.status(401).json({
         authenticated: false,
         message: '未ログインです',
+        csrfToken,
       })
     }
 
@@ -292,6 +298,7 @@ export function authRouter(config) {
         accessTokenExpired: isAccessTokenExpired,
         accessTokenExpiresAt: new Date(session.accessTokenClaims.exp * 1000).toISOString(),
       },
+      csrfToken,
     })
   })
 

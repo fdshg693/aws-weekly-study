@@ -9,13 +9,24 @@
 import { postAuthLogout } from '../auth/cognito.js'
 
 async function handleLogout() {
-  // 1. BFFにログアウトリクエスト
-  //    → サーバーサイドセッション削除 + Cookie クリア
-  const { logoutUrl } = await postAuthLogout()
+  try {
+    // 1. BFFにログアウトリクエスト
+    //    → サーバーサイドセッション削除 + Cookie クリア
+    const data = await postAuthLogout()
 
-  // 2. Cognitoのログアウトエンドポイントにリダイレクト
-  //    → Cognito Hosted UIのセッションCookieも無効化
-  window.location.href = logoutUrl
+    if (!data.logoutUrl) {
+      console.error('[LOGOUT] BFF error:', data)
+      alert('ログアウトに失敗しました: ' + (data.message || 'Unknown error'))
+      return
+    }
+
+    // 2. Cognitoのログアウトエンドポイントにリダイレクト
+    //    → Cognito Hosted UIのセッションCookieも無効化
+    window.location.href = data.logoutUrl
+  } catch (err) {
+    console.error('[LOGOUT] Error:', err)
+    alert('ログアウトに失敗しました: ' + err.message)
+  }
 }
 </script>
 

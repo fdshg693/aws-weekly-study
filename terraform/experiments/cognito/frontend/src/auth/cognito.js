@@ -19,6 +19,11 @@
 // BFF APIのベースURL（initBffConfig で設定される）
 let bffBaseUrl = ''
 
+// CSRFトークン（/auth/me のレスポンスから取得）
+// クロスオリジン環境ではdocument.cookieで他ドメインのCookieを読めないため、
+// BFFがレスポンスボディに含めたCSRFトークンをメモリに保持する
+let csrfToken = ''
+
 /**
  * config.json からBFF設定を読み込み
  * Amplifyデプロイ時: config.json の bffUrl を使用
@@ -63,7 +68,14 @@ export function getBffUrl() {
  */
 export async function fetchAuthMe() {
   const res = await fetch(`${bffBaseUrl}/auth/me`, { credentials: 'include' })
-  return res.json()
+  const data = await res.json()
+
+  // BFFがレスポンスに含めたCSRFトークンをメモリに保持
+  if (data.csrfToken) {
+    csrfToken = data.csrfToken
+  }
+
+  return data
 }
 
 /**
@@ -105,15 +117,14 @@ export async function postAuthRefresh() {
 }
 
 /**
- * CSRFトークンをCookieから取得
+ * CSRFトークンを取得
  *
- * BFFが設定した csrf_token Cookie（HttpOnly=false）を読み取ります。
- * このトークンをリクエストヘッダーに付与することで、
- * 正規のフロントエンドからのリクエストであることを証明します。
+ * /auth/me のレスポンスボディから取得したCSRFトークンを返します。
+ * クロスオリジン環境（Amplify + API Gateway）ではdocument.cookieで
+ * 他ドメインのCookieを読めないため、レスポンスボディ経由で受け渡します。
  *
  * @returns {string} CSRFトークン
  */
 function getCsrfToken() {
-  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/)
-  return match ? match[1] : ''
+  return csrfToken
 }

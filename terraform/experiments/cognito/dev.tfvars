@@ -32,18 +32,19 @@ create_user_pool_domain = true
 # ローカル開発用にlocalhost:5173（Vite）とlocalhost:3000（BFF直接）を追加
 # Amplify URLは初回デプロイ後に追加してください
 # API Gateway URLも初回デプロイ後に追加してください（terraform output bff_api_url で確認）
+
+# TerraformでAPI GatewayのURLをcallback_urlsに自動追加したいところですが、
+# Cognito Client → Lambda → API Gateway → Cognito Client の循環依存になるため、現状は手動更新が必要
 callback_urls = [
   "http://localhost:5173/callback",
   "http://localhost:3000/auth/callback",
-  "https://main.d2yh1v5oo438xg.amplifyapp.com/callback",
-  "https://main.d2yh1v5oo438xg.amplifyapp.com/auth/callback",
-  "https://jfk7a0817h.execute-api.ap-northeast-1.amazonaws.com/auth/callback",
+  "https://ftn9ukrok8.execute-api.ap-northeast-1.amazonaws.com/auth/callback",
 ]
 logout_urls = [
   "http://localhost:5173/",
   "http://localhost:3000/",
-  "https://main.d2yh1v5oo438xg.amplifyapp.com/",
-  "https://main.d2yh1v5oo438xg.amplifyapp.com/logout",
+  "https://main.d5kah3og60h3f.amplifyapp.com/",
+  "https://main.d5kah3og60h3f.amplifyapp.com/logout",
 ]
 
 # Token Validity Period
