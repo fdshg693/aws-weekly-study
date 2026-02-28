@@ -48,6 +48,17 @@ variable "desired_count" {
   default     = 1
 }
 
+# セキュリティ設定
+variable "allowed_cidrs" {
+  description = <<-EOT
+    ALBへのアクセスを許可するCIDRブロックのリスト。
+    デフォルトは全開放（0.0.0.0/0）だが、本番環境では特定のIPに制限すること。
+    例: ["203.0.113.0/32", "198.51.100.0/24"]
+  EOT
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
 variable "container_image" {
   description = <<-EOT
     コンテナイメージのURI。

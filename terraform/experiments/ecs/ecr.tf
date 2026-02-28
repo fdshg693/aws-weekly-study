@@ -10,6 +10,10 @@ resource "aws_ecr_repository" "main" {
   # MUTABLE: 同じタグで上書きプッシュを許可（開発環境では便利だが事故の元）
   image_tag_mutability = "IMMUTABLE"
 
+  # terraform destroy時にイメージが残っていても強制削除する
+  # これがないとイメージが存在する場合にリポジトリの削除が失敗する
+  force_delete = true
+
   # プッシュ時にセキュリティスキャンを自動実行
   # コンテナイメージ内の脆弱性（CVE）を検出する
   image_scanning_configuration {

@@ -163,3 +163,93 @@ resource "aws_route_table_association" "private_1c" {
   subnet_id      = aws_subnet.private_1c.id
   route_table_id = aws_route_table.private.id
 }
+
+#-------------------------------------------------------------------------------
+# Network ACL（プライベートサブネット用）
+# セキュリティグループ（ステートフル）に加えて、NACL（ステートレス）で多層防御を実現
+# SGの設定ミスがあってもNACLが防御層として機能する（Defense in Depth）
+#
+# NACLはステートレスのため、インバウンドとアウトバウンドの両方を明示的に許可する必要がある
+# また、エフェメラルポート（1024-65535）の応答トラフィックも許可が必要
+#-------------------------------------------------------------------------------
+resource "aws_network_acl" "private" {
+  vpc_id     = aws_vpc.main.id
+  subnet_ids = [aws_subnet.private_1a.id, aws_subnet.private_1c.id]
+
+  #--- インバウンドルール ---
+
+  # パブリックサブネット1a（10.0.1.0/24）からコンテナポートへのアクセスを許可
+  # ALBからECSタスクへのリクエスト転送用
+  ingress {
+    rule_no    = 100
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = "10.0.1.0/24"
+    from_port  = var.container_port
+    to_port    = var.container_port
+  }
+
+  # パブリックサブネット1c（10.0.2.0/24）からコンテナポートへのアクセスを許可
+  ingress {
+    rule_no    = 110
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = "10.0.2.0/24"
+    from_port  = var.container_port
+    to_port    = var.container_port
+  }
+
+  # エフェメラルポートへの応答トラフィックを許可
+  # NAT Gateway経由の外部通信（ECRイメージ取得、CloudWatch Logs送信）の応答に必要
+  # TCP通信の戻りパケットはエフェメラルポート（1024-65535）に返ってくる
+  ingress {
+    rule_no    = 200
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port  = 1024
+    to_port    = 65535
+  }
+
+  # 上記以外は暗黙的にDENY（NACLのデフォルト動作）
+
+  #--- アウトバウンドルール ---
+
+  # HTTPS（443）を許可
+  # ECRからのイメージ取得、CloudWatch Logsへのログ送信に必要
+  egress {
+    rule_no    = 100
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port  = 443
+    to_port    = 443
+  }
+
+  # パブリックサブネット1aへのエフェメラルポート応答を許可
+  # ALBからのリクエストに対するレスポンスに必要
+  egress {
+    rule_no    = 200
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = "10.0.1.0/24"
+    from_port  = 1024
+    to_port    = 65535
+  }
+
+  # パブリックサブネット1cへのエフェメラルポート応答を許可
+  egress {
+    rule_no    = 210
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = "10.0.2.0/24"
+    from_port  = 1024
+    to_port    = 65535
+  }
+
+  # 上記以外は暗黙的にDENY（NACLのデフォルト動作）
+
+  tags = {
+    Name = "${var.environment}-${var.project_name}-private-nacl"
+  }
+}
