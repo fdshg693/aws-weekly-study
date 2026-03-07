@@ -57,3 +57,16 @@ output "cloudwatch_log_group" {
   description = "CloudWatch log group for container logs"
   value       = aws_cloudwatch_log_group.ecs.name
 }
+
+#-------------------------------------------------------------------------------
+# Claude Desktop 連携情報（enable_server_oauth = true の場合のみ）
+#-------------------------------------------------------------------------------
+output "claude_desktop_client_id" {
+  description = "Claude Desktop の Connector 設定で使う Cognito Client ID"
+  value       = var.use_cognito && var.enable_server_oauth ? aws_cognito_user_pool_client.claude_desktop[0].id : null
+}
+
+output "claude_desktop_connector_url" {
+  description = "Claude Desktop の Settings > Connectors に登録する URL"
+  value       = var.enable_server_oauth ? "https://${local.public_hostname}${var.mcp_path}" : null
+}

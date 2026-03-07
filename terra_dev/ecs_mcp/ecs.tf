@@ -61,24 +61,50 @@ resource "aws_ecs_task_definition" "main" {
         }
       ]
 
-      environment = [
-        {
-          name  = "HOST"
-          value = "0.0.0.0"
-        },
-        {
-          name  = "PORT"
-          value = tostring(var.container_port)
-        },
-        {
-          name  = "MCP_PATH"
-          value = var.mcp_path
-        },
-        {
-          name  = "MCP_STATELESS_HTTP"
-          value = "true"
-        }
-      ]
+      environment = concat(
+        [
+          {
+            name  = "HOST"
+            value = "0.0.0.0"
+          },
+          {
+            name  = "PORT"
+            value = tostring(var.container_port)
+          },
+          {
+            name  = "MCP_PATH"
+            value = var.mcp_path
+          },
+          {
+            name  = "MCP_STATELESS_HTTP"
+            value = "true"
+          }
+        ],
+        # サーバーサイド OAuth 有効時に追加する環境変数。
+        # server.py が OAUTH_ISSUER の存在を見て OAuth 認証を有効化する。
+        var.enable_server_oauth ? [
+          {
+            name  = "OAUTH_ISSUER"
+            value = local.resolved_oidc_issuer
+          },
+          {
+            name  = "OAUTH_AUTHORIZATION_ENDPOINT"
+            value = local.resolved_oidc_authorization_endpoint
+          },
+          {
+            name  = "OAUTH_TOKEN_ENDPOINT"
+            value = local.resolved_oidc_token_endpoint
+          },
+          {
+            name  = "PUBLIC_HOSTNAME"
+            value = local.public_hostname
+          },
+          {
+            name  = "OAUTH_CLIENT_ID"
+            value = local.server_oauth_client_id
+          }
+        ] : []
+      )
 
       logConfiguration = {
         logDriver = "awslogs"

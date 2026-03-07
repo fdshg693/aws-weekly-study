@@ -219,3 +219,21 @@ variable "oidc_authentication_request_extra_params" {
   type        = map(string)
   default     = {}
 }
+
+#-------------------------------------------------------------------------------
+# サーバーサイド OAuth（Claude Desktop 等の MCP クライアント向け）
+#
+# ALB の authenticate-oidc はブラウザ前提のリダイレクト認証だが、
+# Claude Desktop 等のプログラムクライアントは MCP 仕様準拠の OAuth を必要とする。
+# このモードでは ALB は認証せず、MCP サーバー自身が Bearer トークンを検証する。
+#
+# enable_oidc_auth（ALB 認証）とは排他的に使う。
+#-------------------------------------------------------------------------------
+variable "enable_server_oauth" {
+  description = <<-EOT
+    true の場合、MCP サーバー側で OAuth 認証を実装する（Claude Desktop 連携用）。
+    ALB の enable_oidc_auth とは排他: 両方 true にはできない。
+  EOT
+  type        = bool
+  default     = false
+}

@@ -91,6 +91,49 @@ resource "aws_lb_listener" "https" {
   }
 }
 
+#-------------------------------------------------------------------------------
+# /.well-known/* パスの転送（サーバーサイド OAuth 時のみ）
+# MCP 仕様で必要な OAuth メタデータエンドポイントを ECS へ到達させる。
+# - /.well-known/oauth-authorization-server  (RFC 8414 / MCP 2025-03-26)
+# - /.well-known/oauth-protected-resource    (RFC 9728 / MCP 2025-06-18)
+#-------------------------------------------------------------------------------
+resource "aws_lb_listener_rule" "well_known" {
+  count        = var.enable_server_oauth ? 1 : 0
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 40
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.main.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/.well-known/*"]
+    }
+  }
+}
+
+# /oauth/* パスの転送（サーバーサイド OAuth 時のみ）
+# Dynamic Client Registration (DCR) エンドポイント用。
+# Claude Desktop が client_id を自動取得するために POST /oauth/register を呼ぶ。
+resource "aws_lb_listener_rule" "oauth" {
+  count        = var.enable_server_oauth ? 1 : 0
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 41
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.main.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/oauth/*"]
+    }
+  }
+}
+
 # ヘルス確認用の /health は認証なしでターゲットへ転送する。
 resource "aws_lb_listener_rule" "health" {
   listener_arn = aws_lb_listener.https.arn

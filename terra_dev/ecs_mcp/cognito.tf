@@ -90,6 +90,45 @@ resource "aws_cognito_user_pool_client" "main" {
 }
 
 #-------------------------------------------------------------------------------
+# Claude Desktop 用 User Pool Client
+# MCP 仕様準拠の OAuth で使うクライアント。
+#
+# ALB 用クライアントとの違い:
+# - generate_secret = false（パブリッククライアント）
+#   → Claude Desktop は PKCE (S256) で認可コードフローを実行する
+# - callback_urls に Claude Desktop 固定のコールバック URL を指定する
+# - ALB 用クライアントと共存でき、同じ User Pool のユーザーで認証できる
+#-------------------------------------------------------------------------------
+resource "aws_cognito_user_pool_client" "claude_desktop" {
+  count        = var.use_cognito && var.enable_server_oauth ? 1 : 0
+  name         = "${var.environment}-${var.project_name}-claude-desktop"
+  user_pool_id = aws_cognito_user_pool.main[0].id
+
+  # パブリッククライアント: シークレットなし + PKCE 必須
+  generate_secret = false
+
+  allowed_oauth_flows                  = ["code"]
+  allowed_oauth_flows_user_pool_client = true
+  allowed_oauth_scopes                 = ["openid", "profile", "email"]
+  supported_identity_providers         = ["COGNITO"]
+
+  # Claude Desktop 固定のコールバック URL
+  # https://support.claude.com/en/articles/11503834
+  callback_urls = ["https://claude.ai/api/mcp/auth_callback"]
+  logout_urls   = ["https://claude.ai"]
+
+  access_token_validity  = 1  # 時間
+  id_token_validity      = 1  # 時間
+  refresh_token_validity = 30 # 日
+
+  token_validity_units {
+    access_token  = "hours"
+    id_token      = "hours"
+    refresh_token = "days"
+  }
+}
+
+#-------------------------------------------------------------------------------
 # OIDC エンドポイントの解決
 # Cognito を使う場合はリソースから自動導出し、外部 IdP の場合は変数を使う。
 # alb.tf の authenticate-oidc はこの locals を参照する。
@@ -105,4 +144,8 @@ locals {
   resolved_oidc_user_info_endpoint     = var.use_cognito ? "${local.cognito_domain_url}/oauth2/userInfo" : var.oidc_user_info_endpoint
   resolved_oidc_client_id              = var.use_cognito ? aws_cognito_user_pool_client.main[0].id : var.oidc_client_id
   resolved_oidc_client_secret          = var.use_cognito ? aws_cognito_user_pool_client.main[0].client_secret : var.oidc_client_secret
+
+  # Claude Desktop / MCP クライアント用の client_id（DCR で返す値）
+  # Cognito の場合は claude_desktop クライアントから取得、外部 IdP の場合は変数指定
+  server_oauth_client_id = var.use_cognito && var.enable_server_oauth ? aws_cognito_user_pool_client.claude_desktop[0].id : var.oidc_client_id
 }
