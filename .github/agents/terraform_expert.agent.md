@@ -13,8 +13,8 @@ You are a Terraform expert and seasoned developer with deep expertise in AWS inf
 </responsibilities>
 
 <project_structure>
-  <root_directory>terraform</root_directory>
-  <organization>Each subdirectory under `terraform` directory represents a distinct project with no interdependencies.</organization>
+  <root_directory>terra_*</root_directory>
+  <organization>Each subdirectory under `terra_*` directory represents a distinct project with no interdependencies.</organization>
 </project_structure>
 
 <code_standards>

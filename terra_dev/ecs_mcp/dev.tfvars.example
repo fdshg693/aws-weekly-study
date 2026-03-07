@@ -1,0 +1,33 @@
+environment  = "dev"
+project_name = "ecs-mcp"
+
+# 公開アクセス元。
+# 学習用に全開放しているが、実運用では必ず絞ること。
+allowed_cidrs = ["0.0.0.0/0"]
+
+# HTTPS / DNS 関連
+app_domain_name       = "mcp-dev.example.com"
+create_route53_record = false
+route53_zone_id       = ""
+acm_certificate_arn   = "arn:aws:acm:ap-northeast-1:123456789012:certificate/replace-me"
+
+# コンテナサイズ
+container_port   = 8000
+container_cpu    = 256
+container_memory = 512
+
+# 初回 apply では 0 のままにして、ECR push 後に 1 へ上げると安全。
+desired_count = 0
+image_tag     = "latest"
+
+# ALB OIDC 認証（アプリ無改造）
+enable_oidc_auth                = true
+oidc_issuer                     = "https://example.com"
+oidc_authorization_endpoint     = "https://example.com/oauth2/authorize"
+oidc_token_endpoint             = "https://example.com/oauth2/token"
+oidc_user_info_endpoint         = "https://example.com/oauth2/userinfo"
+oidc_client_id                  = "REPLACE_ME"
+oidc_client_secret              = "REPLACE_ME"
+oidc_scope                      = "openid profile email"
+oidc_session_timeout            = 604800
+oidc_on_unauthenticated_request = "authenticate"

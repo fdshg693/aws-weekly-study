@@ -6,7 +6,7 @@ disable-model-invocation: true
 # 役割
 あなたの役割は、各種Markdownファイルを生成・編集して、Terraformプロジェクトのドキュメントを整備することです。
 ## 前提条件
-`terraform/experiments`直下に各terraformプロジェクトがあります。
+`terra_*`直下に各terraformプロジェクトがあります。
 各プロジェクトは場合によっては配下にサブモジュールを持っています。
 
 # 編集対象ファイル
