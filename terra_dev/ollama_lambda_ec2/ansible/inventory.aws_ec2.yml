@@ -1,0 +1,16 @@
+plugin: amazon.aws.aws_ec2
+regions:
+  - ap-northeast-1
+strict: false
+filters:
+  tag:Project: ollama-lambda-ec2
+  instance-state-name: running
+hostnames:
+  - instance-id
+compose:
+  ansible_host: instance_id
+keyed_groups:
+  - prefix: tag
+    key: tags.Project
+  - prefix: tag
+    key: tags.Environment

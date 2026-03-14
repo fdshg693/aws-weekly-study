@@ -1,0 +1,21 @@
+[Unit]
+Description=Ollama service
+Documentation=https://ollama.com/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ ollama_service_user }}
+Group={{ ollama_service_group }}
+WorkingDirectory={{ ollama_home }}
+Environment="OLLAMA_HOST={{ ollama_environment.OLLAMA_HOST }}"
+Environment="OLLAMA_MODELS={{ ollama_environment.OLLAMA_MODELS }}"
+ExecStart=/usr/local/bin/ollama serve
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

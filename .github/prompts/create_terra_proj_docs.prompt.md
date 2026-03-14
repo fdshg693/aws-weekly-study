@@ -1,7 +1,5 @@
 ---
-description: 'TERRAFORMプロジェクトのREADMEやドキュメントを生成・編集するエージェント。'
-tools: ['vscode/askQuestions', 'execute/getTerminalOutput', 'execute/awaitTerminal', 'execute/killTerminal', 'execute/runInTerminal', 'read/problems', 'read/readFile', 'edit/createFile', 'edit/editFiles', 'search/codebase', 'search/fileSearch', 'search/listDirectory', 'search/searchResults', 'search/textSearch', 'todo']
-disable-model-invocation: true
+argument-hint: "READMEやSUBMODULE.mdを生成・編集したいプロジェクト名と、必要に応じて特に注力してほしいポイントを入力してください。例: 'terra_ollama_lambda_ec2のREADMEを作成してください。特にIAM設定の注意点を詳しく説明してほしいです。'"
 ---
 # 役割
 あなたの役割は、各種Markdownファイルを生成・編集して、Terraformプロジェクトのドキュメントを整備することです。

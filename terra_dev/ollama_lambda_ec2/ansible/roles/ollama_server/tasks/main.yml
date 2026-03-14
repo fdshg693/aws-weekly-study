@@ -1,0 +1,99 @@
+---
+- name: Install baseline packages required for Ollama operations
+  ansible.builtin.dnf:
+    name:
+      - curl
+      - jq
+      - shadow-utils
+      - tar
+    state: present
+
+- name: Ensure the Ollama service group exists
+  ansible.builtin.group:
+    name: "{{ ollama_service_group }}"
+    system: true
+
+- name: Ensure the Ollama service user exists
+  ansible.builtin.user:
+    name: "{{ ollama_service_user }}"
+    group: "{{ ollama_service_group }}"
+    home: "{{ ollama_home }}"
+    shell: /sbin/nologin
+    system: true
+    create_home: true
+
+- name: Ensure Ollama directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(ollama_service_user) }}"
+    group: "{{ item.group | default(ollama_service_group) }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ ollama_home }}"
+      mode: "0755"
+    - path: "{{ ollama_models_dir }}"
+      mode: "0755"
+
+- name: Check whether the Ollama binary is already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/ollama
+  register: ollama_binary
+
+- name: Install Ollama via the official install script when missing
+  ansible.builtin.shell: |
+    set -o errexit
+    set -o nounset
+    set -o pipefail
+    curl -fsSL {{ ollama_download_url }} | sh
+  args:
+    executable: /bin/bash
+    creates: /usr/local/bin/ollama
+  when: not ollama_binary.stat.exists
+
+- name: Deploy the Ollama systemd unit
+  ansible.builtin.template:
+    src: ollama.service.j2
+    dest: /etc/systemd/system/ollama.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Reload systemd after unit changes
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable and start the Ollama service
+  ansible.builtin.systemd:
+    name: ollama
+    enabled: true
+    state: started
+
+- name: Wait for the local Ollama API to become reachable
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 11434
+    timeout: "{{ ollama_wait_for_timeout }}"
+    delay: 3
+
+- name: Pull the default model so the first API call is less surprising
+  ansible.builtin.command: /usr/local/bin/ollama pull {{ ollama_default_model }}
+  register: ollama_pull_result
+  environment: "{{ ollama_environment }}"
+  retries: "{{ ollama_model_pull_retries }}"
+  delay: "{{ ollama_model_pull_delay }}"
+  until: ollama_pull_result.rc == 0
+  changed_when: >-
+    'pulling' in (ollama_pull_result.stdout | lower)
+    or 'verifying' in (ollama_pull_result.stdout | lower)
+    or 'writing manifest' in (ollama_pull_result.stdout | lower)
+
+- name: Show installed models for a simple smoke test
+  ansible.builtin.command: /usr/local/bin/ollama list
+  register: ollama_list_result
+  environment: "{{ ollama_environment }}"
+  changed_when: false
+
+- name: Print installed models
+  ansible.builtin.debug:
+    var: ollama_list_result.stdout_lines

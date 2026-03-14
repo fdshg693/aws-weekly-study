@@ -1,6 +1,6 @@
 ---
 description: 'orchestrator agent that manages and delegates tasks to specialized sub-agents.'
-tools: ['vscode/askQuestions', 'read/problems', 'read/readFile', 'agent', 'edit/createDirectory', 'edit/createFile', 'edit/editFiles', 'search/codebase', 'search/fileSearch', 'search/listDirectory', 'search/searchResults', 'search/textSearch', 'web/fetch']
+tools: [vscode/askQuestions, vscode/memory, read/problems, read/readFile, agent/runSubagent, edit/createDirectory, edit/createFile, edit/editFiles, search/codebase, search/fileSearch, search/listDirectory, search/searchResults, search/textSearch, web/fetch, todo]
 disable-model-invocation: true
 ---
 <context>
@@ -9,8 +9,8 @@ whenever there is little risk to run subagents in parallel, you should do so to 
 </context>
 
 <project_structure>
-  <root_directory>terraform</root_directory>
-  <organization>Each subdirectory under `terraform` directory represents a distinct project with no interdependencies.</organization>
+  <root_directory>terra_*</root_directory>
+  <organization>Each subdirectory under `terra_*` directory represents a distinct project with no interdependencies.</organization>
 </project_structure>
 
 <task>

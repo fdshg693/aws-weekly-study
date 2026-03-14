@@ -121,5 +121,6 @@
         "eval": false,
         "Invoke-Expression": false,
         "iex": false
-    }
+    },
+    "github.copilot.chat.copilotMemory.enabled": true
 }

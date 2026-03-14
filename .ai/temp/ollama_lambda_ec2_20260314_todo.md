@@ -1,0 +1,8 @@
+- [x] Terraform provider / variables / data sources を作成する
+- [x] VPC・Security Group・VPC Endpoint を実装する
+- [x] EC2・IAM・user_data を実装する
+- [x] Lambda・Secrets Manager・パッケージングを実装する
+- [x] API Gateway・Log Group・outputs を実装する
+- [x] Ansible 構成を実装する
+- [x] README と tfvars を整備する
+- [x] Terraform の整合性を検証する

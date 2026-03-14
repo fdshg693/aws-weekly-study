@@ -1,0 +1,16 @@
+---
+# Role defaults that make the sample easy to understand and override.
+
+ollama_download_url: https://ollama.com/install.sh
+ollama_default_model: qwen2.5:0.5b
+ollama_listen_address: 0.0.0.0:11434
+ollama_service_user: ollama
+ollama_service_group: ollama
+ollama_home: /var/lib/ollama
+ollama_models_dir: "{{ ollama_home }}/.ollama/models"
+ollama_wait_for_timeout: 60
+ollama_model_pull_retries: 3
+ollama_model_pull_delay: 20
+ollama_environment:
+  OLLAMA_HOST: "{{ ollama_listen_address }}"
+  OLLAMA_MODELS: "{{ ollama_models_dir }}"
