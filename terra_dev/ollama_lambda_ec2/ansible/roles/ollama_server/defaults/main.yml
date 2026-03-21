@@ -12,5 +12,6 @@ ollama_wait_for_timeout: 60
 ollama_model_pull_retries: 3
 ollama_model_pull_delay: 20
 ollama_environment:
+  HOME: "{{ ollama_home }}"
   OLLAMA_HOST: "{{ ollama_listen_address }}"
   OLLAMA_MODELS: "{{ ollama_models_dir }}"

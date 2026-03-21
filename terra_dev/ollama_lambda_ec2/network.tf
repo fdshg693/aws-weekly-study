@@ -1,8 +1,36 @@
 # Network and security
 # --------------------
-# The sample deliberately avoids NAT Gateway to keep cost and moving parts down.
-# Because the Lambda function still needs to call Secrets Manager from inside the VPC,
-# we create an Interface VPC Endpoint with private DNS enabled.
+# この構成では、通信をかなり限定しています。最終的に許可される通信は次のとおりです。
+#
+# 1. Lambda -> EC2
+#    - TCP ${var.ollama_port} 番のみ許可
+#    - Lambda から EC2 上の Ollama API を呼び出すための通信です
+#
+# 2. Lambda -> Secrets Manager 用 Interface VPC Endpoint
+#    - TCP 443 番のみ許可
+#    - Lambda が VPC 内から Secrets Manager を private DNS 経由で利用するための通信です
+#
+# 3. Lambda -> VPC DNS Resolver
+#    - TCP/UDP 53 番のみ許可
+#    - private DNS 名の名前解決に必要な DNS 通信です
+#
+# 4. EC2 -> インターネット
+#    - TCP 443/80 番のみ許可
+#    - パッケージ取得、モデルダウンロード、SSM 関連通信などのための外向き通信です
+#
+# 5. EC2 -> VPC DNS Resolver
+#    - TCP/UDP 53 番のみ許可
+#    - 名前解決に必要な DNS 通信です
+#
+# 6. Lambda -> Interface VPC Endpoint の通信は、送信側と受信側の両方で明示
+#    - Lambda 側では TCP 443 番への送信のみ許可
+#    - Endpoint 側では Lambda からの TCP 443 番の受信のみ許可
+#    - これは Lambda 用 SG と Endpoint 用 SG が別であり、同じ通信を
+#      「送信元の許可」と「宛先の受信許可」の両方で定義しているためです
+#
+# 逆にいうと、上記以外の通信はこのファイルの Security Group ルールでは許可していません。
+# また、NAT Gateway は使わず、Secrets Manager へのアクセスは Interface VPC Endpoint を使って
+# VPC 内で閉じる構成にしています。
 
 resource "aws_security_group" "ec2" {
   name        = "${local.name_prefix}-ec2-sg"

@@ -11,6 +11,6 @@ compose:
   ansible_host: instance_id
 keyed_groups:
   - prefix: tag
-    key: tags.Project
+    key: ec2_tags.Project
   - prefix: tag
-    key: tags.Environment
+    key: ec2_tags.Environment

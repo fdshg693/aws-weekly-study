@@ -17,6 +17,7 @@ import os
 import socket
 from typing import Any
 from urllib import error, request
+from urllib.parse import urlsplit
 
 import boto3
 from botocore.config import Config
@@ -109,7 +110,28 @@ def _load_shared_secret() -> str:
     return SECRET_CACHE
 
 
-def _forward_to_ollama(prompt: str, model: str) -> dict[str, Any]:
+def _forward_to_ollama(prompt: str, model: str, request_id: str) -> dict[str, Any]:
+    target = urlsplit(OLLAMA_BASE_URL)
+    target_host = target.hostname or "unknown"
+    target_port = target.port or (443 if target.scheme == "https" else 80)
+
+    try:
+        resolved_targets = sorted({address[4][0] for address in socket.getaddrinfo(target_host, target_port, type=socket.SOCK_STREAM)})
+    except OSError as exc:
+        resolved_targets = [f"resolution_failed:{exc}"]
+
+    LOGGER.info(
+        "Forwarding request_id=%s to Ollama base_url=%s host=%s port=%s resolved_targets=%s model=%s prompt_chars=%s timeout_seconds=%s",
+        request_id,
+        OLLAMA_BASE_URL,
+        target_host,
+        target_port,
+        resolved_targets,
+        model,
+        len(prompt),
+        REQUEST_TIMEOUT_SECONDS,
+    )
+
     payload = json.dumps({
         "model": model,
         "prompt": prompt,
@@ -128,7 +150,12 @@ def _forward_to_ollama(prompt: str, model: str) -> dict[str, Any]:
             upstream_payload = upstream_response.read().decode("utf-8")
     except error.HTTPError as exc:
         upstream_error = exc.read().decode("utf-8", errors="replace")
-        LOGGER.warning("Ollama returned HTTP %s", exc.code)
+        LOGGER.warning(
+            "Ollama returned HTTP %s for request_id=%s target=%s",
+            exc.code,
+            request_id,
+            OLLAMA_BASE_URL,
+        )
         return _response(
             502,
             {
@@ -139,13 +166,29 @@ def _forward_to_ollama(prompt: str, model: str) -> dict[str, Any]:
         )
     except error.URLError as exc:
         reason = exc.reason
+        LOGGER.warning(
+            "Failed connecting to Ollama for request_id=%s target=%s reason_type=%s reason=%r",
+            request_id,
+            OLLAMA_BASE_URL,
+            type(reason).__name__,
+            reason,
+        )
         if isinstance(reason, socket.timeout):
             return _response(504, {"message": "Timed out while waiting for Ollama response."})
         return _response(502, {"message": f"Failed to connect to Ollama: {reason}"})
     except TimeoutError:
+        LOGGER.warning("Timed out connecting to Ollama for request_id=%s target=%s", request_id, OLLAMA_BASE_URL)
         return _response(504, {"message": "Timed out while waiting for Ollama response."})
     except socket.timeout:
+        LOGGER.warning("Socket timed out connecting to Ollama for request_id=%s target=%s", request_id, OLLAMA_BASE_URL)
         return _response(504, {"message": "Timed out while waiting for Ollama response."})
+
+    LOGGER.info(
+        "Received upstream response for request_id=%s target=%s payload_bytes=%s",
+        request_id,
+        OLLAMA_BASE_URL,
+        len(upstream_payload.encode("utf-8")),
+    )
 
     try:
         upstream_json = json.loads(upstream_payload)
@@ -183,7 +226,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             return _response(403, {"message": "Invalid API key."})
 
         prompt, model = _parse_request(event)
-        return _forward_to_ollama(prompt=prompt, model=model)
+        return _forward_to_ollama(prompt=prompt, model=model, request_id=request_id)
     except ValueError as exc:
         return _response(400, {"message": str(exc)})
     except Exception:

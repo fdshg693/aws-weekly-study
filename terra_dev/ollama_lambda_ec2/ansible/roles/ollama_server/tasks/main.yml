@@ -2,7 +2,7 @@
 - name: Install baseline packages required for Ollama operations
   ansible.builtin.dnf:
     name:
-      - curl
+      - curl-minimal
       - jq
       - shadow-utils
       - tar
@@ -58,16 +58,18 @@
     owner: root
     group: root
     mode: "0644"
+  register: ollama_systemd_unit
 
 - name: Reload systemd after unit changes
   ansible.builtin.systemd:
     daemon_reload: true
+  when: ollama_systemd_unit.changed
 
 - name: Enable and start the Ollama service
   ansible.builtin.systemd:
     name: ollama
     enabled: true
-    state: started
+    state: "{{ 'restarted' if ollama_systemd_unit.changed else 'started' }}"
 
 - name: Wait for the local Ollama API to become reachable
   ansible.builtin.wait_for:

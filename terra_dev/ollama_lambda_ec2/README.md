@@ -51,12 +51,46 @@ EC2 Ollama server (in default public subnet, inbound closed from internet)
 
 - Terraform `>= 1.0`
 - AWS CLI（認証済み）
-- Ansible
-- Session Manager Plugin
-- `amazon.aws` Ansible collection
+- Docker
 - 既存の **default VPC** と **default subnets**
 
-> 補足: `amazon.aws.aws_ssm` 接続プラグインのバージョンによっては、一時ファイル転送用の S3 バケット設定が必要です。その場合は `ANSIBLE_AWS_SSM_BUCKET` を環境変数で渡してください。
+> 補足: Ansible 実行は既定で Docker コンテナ内のランナーに寄せています。コンテナイメージには `ansible-core`、`amazon.aws` collection、AWS CLI、Session Manager Plugin を同梱します。どうしてもローカル実行したい場合だけ `ANSIBLE_RUNNER=local` を指定してください。
+
+## Makefile でまとめて操作する
+
+プロジェクト直下に `Makefile` を用意してあるので、Terraform / Ansible / curl テストを `make` 経由でまとめて実行できます。
+
+まずは一覧を確認します。
+
+```bash
+make help
+```
+
+よく使うターゲット:
+
+- `make plan`: `dev.tfvars` で Terraform plan
+- `make apply`: `dev.tfvars` で Terraform apply
+- `make ansible-image`: Docker 版 Ansible ランナーを build
+- `make ansible`: `dev` 環境の EC2 に Ollama を導入
+- `make ansible-shell`: Docker 版 Ansible ランナーに入って手で確認
+- `make test`: API Gateway → Lambda → EC2(Ollama) の疎通確認
+- `make up`: `apply` → `ansible` → `test` をまとめて実行
+- `make destroy`: `dev.tfvars` で Terraform destroy
+
+`prod` を使いたい場合は `ENV=prod` を付けてください。
+
+```bash
+make plan ENV=prod
+make apply ENV=prod
+make ansible ENV=prod
+make test ENV=prod
+```
+
+API テスト時のプロンプトやモデルは上書きできます。
+
+```bash
+make test PROMPT="俳句を1つ作って" MODEL="qwen2.5:0.5b"
+```
 
 ## Terraform の使い方
 
@@ -67,63 +101,70 @@ EC2 Ollama server (in default public subnet, inbound closed from internet)
 ### 2. 初期化
 
 ```bash
-cd terra_dev/ollama_lambda_ec2
-terraform init
+make init
 ```
 
 ### 3. プラン確認
 
 ```bash
-terraform plan -var-file="dev.tfvars"
+make plan
 ```
 
 ### 4. 適用
 
 ```bash
-terraform apply -var-file="dev.tfvars"
+make apply
 ```
 
 ### 5. 出力確認
 
 ```bash
-terraform output generate_url
-terraform output ec2_instance_id
-terraform output shared_api_secret_name
+make output
 ```
 
 ## Ansible の使い方
 
 Terraform apply 後、EC2 が起動して Session Manager に見える状態になったら Ollama を導入します。
 
-### 1. Collection を入れる
+### 1. Docker ランナーを準備する
 
 ```bash
-cd ansible
-ansible-galaxy collection install -r requirements.yml
+make ansible-install
 ```
+
+これは既定では `docker/ansible-runner/Dockerfile` から Ansible ランナーイメージを build します。ホスト側で必要なのは Docker と AWS 認証情報だけです。
 
 ### 2. 動的インベントリ確認
 
 ```bash
-ansible-inventory -i inventory.aws_ec2.yml --graph
+make ansible-inventory
 ```
+
+このインベントリでは `tags.Environment` を keyed group にしているため、環境ごとのグループ名は `tag_dev` / `tag_prod` になります。
 
 ### 3. Playbook 実行
 
 ```bash
-ansible-playbook -i inventory.aws_ec2.yml playbook.yml --limit tag_Environment_dev
+make ansible
 ```
 
-`prod` の場合は `--limit tag_Environment_prod` に変えてください。
+`prod` の場合は `make ansible ENV=prod` を使ってください。
+
+`make ansible` は `amazon.aws.aws_ssm` 接続プラグイン用の一時 S3 バケットを自動で決定し、存在しなければ作成してからプレイブックを Docker コンテナ内で実行します。既存のバケットを使いたい場合は `ANSIBLE_AWS_SSM_BUCKET` を環境変数で上書きできます。
+
+ローカルにインストール済みの Ansible を使いたい場合は、次のように明示してください。
+
+```bash
+make ansible ANSIBLE_RUNNER=local
+```
 
 ## API 呼び出し例
 
 ```bash
-curl -X POST "$(terraform output -raw generate_url)" \
-  -H "content-type: application/json" \
-  -H "x-api-key: CHANGE-ME-DEV-SHARED-SECRET" \
-  -d '{"prompt":"こんにちは、自己紹介して","model":"qwen2.5:0.5b"}'
+make test
 ```
+
+`make test` は Terraform output から `generate_url` と `shared_api_secret_name` を取得し、Secrets Manager からシークレット値を引いて `curl` を実行します。つまり、毎回 `x-api-key` を手で貼らなくて大丈夫です。ちょっと賢いです。
 
 期待レスポンス例:
 
@@ -147,13 +188,13 @@ curl -X POST "$(terraform output -raw generate_url)" \
 
 - Lambda が secret を読めない: Interface VPC Endpoint、Lambda SG、DNS egress を確認してください。
 - Lambda から EC2 に繋がらない: EC2 private IP、`11434/tcp` の SG-to-SG ルール、Ollama service 状態を確認してください。
-- Ansible 接続に失敗する: Session Manager Plugin、`amazon.aws` collection、EC2 の SSM Managed Instance 登録状態を確認してください。
+- Ansible 接続に失敗する: Docker ランナーイメージの build 成否、EC2 の SSM Managed Instance 登録状態、そして SSM 用一時 S3 バケットにアクセスできることを確認してください。`make ansible-shell` でコンテナに入って切り分けると速いです。
 - EC2 は public subnet にいますが **inbound を開けていない** ので、ブラウザや SSH では直接触れません。これは仕様です。ちょっとストイックですが安全寄りです。
 
 ## 削除
 
 ```bash
-terraform destroy -var-file="dev.tfvars"
+make destroy
 ```
 
 Secrets Manager secret は recovery window を持つため、削除反映に時間がかかる場合があります。

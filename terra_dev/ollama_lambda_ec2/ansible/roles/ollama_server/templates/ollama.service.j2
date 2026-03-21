@@ -9,6 +9,7 @@ Type=simple
 User={{ ollama_service_user }}
 Group={{ ollama_service_group }}
 WorkingDirectory={{ ollama_home }}
+Environment="HOME={{ ollama_environment.HOME }}"
 Environment="OLLAMA_HOST={{ ollama_environment.OLLAMA_HOST }}"
 Environment="OLLAMA_MODELS={{ ollama_environment.OLLAMA_MODELS }}"
 ExecStart=/usr/local/bin/ollama serve

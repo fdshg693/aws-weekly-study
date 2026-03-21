@@ -1,0 +1,7 @@
+.git
+.terraform
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+lambda_function.zip
+ansible/.ansible

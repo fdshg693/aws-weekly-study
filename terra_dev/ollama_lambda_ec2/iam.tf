@@ -1,8 +1,17 @@
 # IAM roles and policies
 # ----------------------
-# We keep permissions intentionally focused:
-# - EC2 gets Session Manager only.
-# - Lambda gets logging, VPC ENI management, and read-only access to one secret.
+# このファイルで付与している権限の要点
+# - EC2:
+#   - EC2サービスがこのロールを引き受け可能
+#   - Session Manager を使った接続・管理のみを許可
+#   - SSH用の広い権限は付与しない
+# - Lambda:
+#   - Lambdaサービスがこのロールを引き受け可能
+#   - CloudWatch Logs へのログ出力を許可
+#   - VPC内で実行するための ENI 作成・管理を許可
+#   - `shared_api_secret` という 1 つの Secrets Manager シークレットに対して
+#     `DescribeSecret` / `GetSecretValue` の読み取りのみを許可
+#   - Secrets の更新・削除や、他シークレットへのアクセスは許可しない
 
 data "aws_iam_policy_document" "ec2_assume_role" {
   statement {

@@ -4,13 +4,15 @@
 # plugin uses Systems Manager Session Manager instead of SSH.
 
 ansible_connection: amazon.aws.aws_ssm
-ansible_user: ec2-user
 ansible_python_interpreter: /usr/bin/python3
 ansible_aws_ssm_region: ap-northeast-1
 
-# Some amazon.aws.aws_ssm plugin versions use an S3 bucket for temporary file staging.
-# If your local setup requires that behavior, export ANSIBLE_AWS_SSM_BUCKET before running
-# the playbook and the value below will be picked up automatically.
+# The amazon.aws.aws_ssm connection plugin does not use ansible_user / remote_user.
+# Commands run over Session Manager and privilege escalation is handled via become.
+#
+# The plugin also requires an S3 bucket for module/file staging. The Makefile provisions
+# a per-account staging bucket automatically, but you can override it explicitly with
+# ANSIBLE_AWS_SSM_BUCKET if you prefer to manage the bucket yourself.
 ansible_aws_ssm_bucket_name: "{{ lookup('env', 'ANSIBLE_AWS_SSM_BUCKET') | default('', true) }}"
 
 ollama_default_model: qwen2.5:0.5b
