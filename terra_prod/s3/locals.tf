@@ -1,31 +1,93 @@
 # ==============================
 # ローカル変数の定義
-# - ユニークな固定バケット名の生成
-# - MIMEタイプマッピング（ファイルアップロード時に使用）
-# - S3にアップロードするwebsiteフォルダ内の全ファイルリストの取得
-# - 環境判定（本番/開発）
+# - 命名規則の一元化
+# - 環境差分の集約
+# - 共通タグとリソース別タグの定義
+# - MIMEタイプマッピングと website 配下ファイル一覧
 # ==============================
 
-# dataブロックは、既存のリソースや外部データソースから情報を取得するために使用されます。（新しいリソースの作成は行いません）
-# aws_caller_identity は、現在AWSにアクセスしているユーザーやロールの情報を取得するデータソースです。
-# current は、このデータソースに付けた名前（識別子）です
-# 現在のAWSアカウントID・認証情報のARN・ユーザーまたはロールの一意のIDを取得できる
 data "aws_caller_identity" "current" {}
 
-# バケット名に使用するローカル変数
-# 参照時は、local.??のようにアクセスして、localsでないことに注意
 locals {
-  # 上のdataブロックと、TFVARSで指定されたリージョン変数を組み合わせて一意のバケット名を生成
-  bucket_name = "static-website-${data.aws_caller_identity.current.account_id}-${var.aws_region}"
+  normalized_project = trim(replace(lower(var.project_name), "/[^a-z0-9-]/", "-"), "-")
 
-  # アクセスログ保存用バケット名
-  log_bucket_name = "${local.bucket_name}-logs"
+  env_config = {
+    development = {
+      label                    = "development"
+      delivery_mode            = "s3_public"
+      website_enabled          = true
+      public_read_enabled      = true
+      enforce_secure_transport = false
+      versioning_status        = "Suspended"
+    }
+    staging = {
+      label                    = "staging"
+      delivery_mode            = "cloudfront_private"
+      website_enabled          = false
+      public_read_enabled      = false
+      enforce_secure_transport = true
+      versioning_status        = "Enabled"
+    }
+    production = {
+      label                    = "production"
+      delivery_mode            = "cloudfront_private"
+      website_enabled          = false
+      public_read_enabled      = false
+      enforce_secure_transport = true
+      versioning_status        = "Enabled"
+    }
+  }
 
-  # ログの保存プレフィックス
+  current_env = local.env_config[var.environment]
+
+  naming_context = {
+    project     = local.normalized_project
+    environment = local.current_env.label
+    account_id  = data.aws_caller_identity.current.account_id
+    region      = var.aws_region
+  }
+
+  name_prefix = join("-", [
+    local.naming_context.project,
+    local.naming_context.environment,
+    local.naming_context.account_id,
+    local.naming_context.region,
+  ])
+
+  resource_names = {
+    static_website = "${local.name_prefix}-site"
+    access_logs    = "${local.name_prefix}-logs"
+  }
+
+  bucket_name     = local.resource_names.static_website
+  log_bucket_name = local.resource_names.access_logs
+
+  default_tags = merge(
+    {
+      ManagedBy    = "Terraform"
+      Project      = local.normalized_project
+      Environment  = local.current_env.label
+      DeliveryMode = local.current_env.delivery_mode
+    },
+    var.tags,
+  )
+
+  resource_tags = {
+    static_website = {
+      Name         = local.resource_names.static_website
+      Purpose      = "static website content"
+      ResourceRole = "site"
+    }
+    access_logs = {
+      Name         = local.resource_names.access_logs
+      Purpose      = "access log storage"
+      ResourceRole = "logs"
+    }
+  }
+
   s3_access_log_prefix         = "s3-access/"
   cloudfront_access_log_prefix = "cloudfront/"
 
-  # MIMEタイプマッピング
   mime_types = {
     "html" = "text/html"
     "css"  = "text/css"
@@ -33,15 +95,12 @@ locals {
     "json" = "application/json"
     "png"  = "image/png"
     "jpg"  = "image/jpeg"
+    "jpeg" = "image/jpeg"
     "svg"  = "image/svg+xml"
+    "txt"  = "text/plain"
+    "xml"  = "application/xml"
+    "ico"  = "image/x-icon"
   }
 
-  # websiteフォルダ内の全ファイルリストを取得
-  # 実際に使う場合は fileset() 関数で動的に取得
-  # ${path.module}は、現在のモジュール（この場合はterraform/s3ディレクトリ）のパスを指す組み込み変数
-  # "**/*" は、サブディレクトリも含めた全てのファイルを対象とするワイルドカードパターン
   website_files = fileset("${path.module}/website", "**/*")
-
-  # 本番環境下、開発環境下判定する
-  is_production = var.environment == "production"
 }

@@ -5,38 +5,30 @@
 # - ログの保管コストを抑えるためのライフサイクル設定を追加
 # ==============================
 
-# ログ専用バケット
-resource "aws_s3_bucket" "access_logs" {
-  bucket = local.log_bucket_name
-
-  tags = {
-    Name        = "Static Website Access Logs"
-    Environment = "Learning"
-    Purpose     = "access log storage"
-  }
-}
-
-# ログバケットは非公開にする
-resource "aws_s3_bucket_public_access_block" "access_logs" {
-  bucket = aws_s3_bucket.access_logs.id
-
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-# ACLを使わずバケット所有者を明確にする
-resource "aws_s3_bucket_ownership_controls" "access_logs" {
-  bucket = aws_s3_bucket.access_logs.id
-
-  rule {
-    object_ownership = "BucketOwnerEnforced"
-  }
-}
-
-# S3サーバーアクセスログの書き込みを許可
 data "aws_iam_policy_document" "access_logs" {
+  statement {
+    sid    = "DenyInsecureTransport"
+    effect = "Deny"
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    actions = ["s3:*"]
+
+    resources = [
+      aws_s3_bucket.access_logs.arn,
+      "${aws_s3_bucket.access_logs.arn}/*",
+    ]
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+
   statement {
     sid    = "AllowS3ServerAccessLogs"
     effect = "Allow"
@@ -63,6 +55,32 @@ data "aws_iam_policy_document" "access_logs" {
       variable = "aws:SourceArn"
       values   = [aws_s3_bucket.static_website.arn]
     }
+  }
+}
+
+# ログ専用バケット
+resource "aws_s3_bucket" "access_logs" {
+  bucket = local.log_bucket_name
+
+  tags = local.resource_tags.access_logs
+}
+
+# ログバケットは非公開にする
+resource "aws_s3_bucket_public_access_block" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# ACLを使わずバケット所有者を明確にする
+resource "aws_s3_bucket_ownership_controls" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
   }
 }
 

@@ -28,22 +28,43 @@ data "aws_iam_policy_document" "terraform_state_bucket" {
 locals {
   normalized_project = trim(replace(lower(var.project_name), "/[^a-z0-9-]/", "-"), "-")
 
-  generated_state_bucket_name = "tfstate-${local.normalized_project}-${data.aws_caller_identity.current.account_id}-${var.aws_region}"
-  generated_lock_table_name   = "terraform-lock-${local.normalized_project}-${replace(var.aws_region, "-", "")}"
+  bootstrap_name_prefix = "${local.normalized_project}-shared-${data.aws_caller_identity.current.account_id}-${var.aws_region}"
+
+  generated_state_bucket_name = "${local.bootstrap_name_prefix}-tfstate"
+  generated_lock_table_name   = "${local.bootstrap_name_prefix}-terraform-lock"
 
   effective_state_bucket_name = var.state_bucket_name != "" ? var.state_bucket_name : local.generated_state_bucket_name
   effective_lock_table_name   = var.lock_table_name != "" ? var.lock_table_name : local.generated_lock_table_name
+
+  default_tags = merge(
+    {
+      ManagedBy   = "Terraform"
+      Project     = local.normalized_project
+      Environment = "shared"
+      Purpose     = "terraform-state-management"
+    },
+    var.tags,
+  )
+
+  resource_tags = {
+    terraform_state = {
+      Name         = local.effective_state_bucket_name
+      ResourceRole = "tfstate"
+      Purpose      = "terraform remote state"
+    }
+    terraform_lock = {
+      Name         = local.effective_lock_table_name
+      ResourceRole = "terraform-lock"
+      Purpose      = "terraform state locking"
+    }
+  }
 }
 
 resource "aws_s3_bucket" "terraform_state" {
   bucket        = local.effective_state_bucket_name
   force_destroy = var.force_destroy_state_bucket
 
-  tags = {
-    Name        = local.effective_state_bucket_name
-    Environment = "shared"
-    Purpose     = "terraform remote state"
-  }
+  tags = local.resource_tags.terraform_state
 }
 
 resource "aws_s3_bucket_versioning" "terraform_state" {
@@ -88,9 +109,5 @@ resource "aws_dynamodb_table" "terraform_lock" {
     type = "S"
   }
 
-  tags = {
-    Name        = local.effective_lock_table_name
-    Environment = "shared"
-    Purpose     = "terraform state locking"
-  }
+  tags = local.resource_tags.terraform_lock
 }

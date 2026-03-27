@@ -13,8 +13,6 @@ provider "aws" {
   region = var.aws_region
   # 全てのリソースに共通で付与するタグを設定
   default_tags {
-    tags = {
-      ManagedBy = "Terraform"
-    }
+    tags = local.default_tags
   }
 }

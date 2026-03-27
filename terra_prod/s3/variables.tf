@@ -19,16 +19,33 @@ variable "aws_region" {
   }
 }
 
+variable "project_name" {
+  description = "リソース命名と共通タグに利用するプロジェクト名"
+  type        = string
+  default     = "terra-prod-s3"
+
+  validation {
+    condition     = trim(var.project_name, " ") != ""
+    error_message = "project_name must not be empty."
+  }
+}
+
 # 本番か開発環境かを区別するための変数
 variable "environment" {
-  description = "本番環境か開発環境かを指定します。本番：production、開発：その他"
+  description = "デプロイ対象の環境を指定します。development / staging / production をサポートします。"
   type        = string
   default     = "development"
 
   validation {
-    condition     = contains(["development", "production"], var.environment)
-    error_message = "Environment must be one of: development, production."
+    condition     = contains(["development", "staging", "production"], var.environment)
+    error_message = "Environment must be one of: development, staging, production."
   }
+}
+
+variable "tags" {
+  description = "すべてのリソースへ追加で付与するタグ"
+  type        = map(string)
+  default     = {}
 }
 
 variable "access_log_retention_days" {

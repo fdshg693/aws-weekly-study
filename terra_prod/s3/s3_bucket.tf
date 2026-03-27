@@ -5,12 +5,7 @@
 resource "aws_s3_bucket" "static_website" {
   bucket = local.bucket_name
 
-  # タグをつけることで、タグごとの管理やコスト配分がしやすくなる
-  tags = {
-    Name        = "Static Website Bucket"
-    Environment = "Learning"
-    Purpose     = "simple static website hosting"
-  }
+  tags = local.resource_tags.static_website
 }
 
 # バージョニング設定（別リソースとして分離）
@@ -21,7 +16,6 @@ resource "aws_s3_bucket_versioning" "static_website" {
 
   # バージョニング設定を有効化
   versioning_configuration {
-    # 本番環境ではバージョニングを有効化、開発環境では一時停止
-    status = local.is_production ? "Enabled" : "Suspended"
+    status = local.current_env.versioning_status
   }
 }

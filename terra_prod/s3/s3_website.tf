@@ -6,6 +6,8 @@
 
 # WEBサイトとしてS3バケットを使用するための設定
 resource "aws_s3_bucket_website_configuration" "static_website" {
+  count = local.current_env.website_enabled ? 1 : 0
+
   # 設定を適用するS3バケットの指定
   bucket = aws_s3_bucket.static_website.id
 

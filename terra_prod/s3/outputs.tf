@@ -3,7 +3,7 @@
 # ウェブサイトURL出力
 output "website_endpoint" {
   description = "S3 Static Website Endpoint"
-  value       = aws_s3_bucket_website_configuration.static_website.website_endpoint
+  value       = local.current_env.website_enabled ? aws_s3_bucket_website_configuration.static_website[0].website_endpoint : null
   sensitive   = false
 }
 
@@ -17,7 +17,7 @@ output "bucket_name" {
 # ウェブサイトURL出力（http://付き）
 output "website_url" {
   description = "S3 Static Website URL"
-  value       = "http://${aws_s3_bucket_website_configuration.static_website.website_endpoint}"
+  value       = local.current_env.website_enabled ? "http://${aws_s3_bucket_website_configuration.static_website[0].website_endpoint}" : null
   sensitive   = false
 }
 
@@ -36,5 +36,11 @@ output "s3_access_log_prefix" {
 output "cloudfront_access_log_prefix" {
   description = "Reserved CloudFront access log prefix for future integration"
   value       = local.cloudfront_access_log_prefix
+  sensitive   = false
+}
+
+output "delivery_mode" {
+  description = "Current delivery mode for the selected environment"
+  value       = local.current_env.delivery_mode
   sensitive   = false
 }

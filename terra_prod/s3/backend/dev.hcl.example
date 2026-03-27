@@ -7,4 +7,4 @@ key            = "terra_prod/s3/development/terraform.tfstate"
 region         = "ap-northeast-1"
 encrypt        = true
 use_lockfile   = true
-dynamodb_table = "REPLACE_WITH_BOOTSTRAP_OUTPUT_LOCK_TABLE_NAME"
+# dynamodb_table = "REPLACE_WITH_BOOTSTRAP_OUTPUT_LOCK_TABLE_NAME" # 互換運用が必要な場合のみ設定

@@ -1,0 +1,10 @@
+{
+  "subject": "terra_prod/s3 Terraform validation flow",
+  "fact": "The terra_prod/s3 root module and its backend_bootstrap module can both be validated locally with `terraform init -backend=false` followed by `terraform validate`.",
+  "citations": [
+    "/Users/seiwan/CodeRoot/AWS/aws-weekly-study/terra_prod/s3/Makefile",
+    "/Users/seiwan/CodeRoot/AWS/aws-weekly-study/terra_prod/s3/backend_bootstrap"
+  ],
+  "reason": "This verified validation flow helps future tasks safely check Terraform changes without requiring remote backend configuration first.",
+  "category": "build-and-test"
+}
