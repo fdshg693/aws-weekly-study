@@ -10,7 +10,7 @@ resource "aws_s3_bucket_public_access_block" "static_website" {
   # 個々のオブジェクトに対して「誰でもアクセスできる」という設定ができるようになります。
   # false: S3オブジェクトレベルのACL（アクセスコントロールリスト）でパブリックアクセスを許可できます。
   # true: パブリックACLの設定そのものがブロックされます。
-  block_public_acls = local.is_production 
+  block_public_acls = local.is_production
   # バケットポリシーでパブリックアクセスを許可できるかどうかを制御します。
   # false: S3バケットポリシーでパブリックアクセスを許可できます。
   # true: パブリックアクセスを許可するポリシーの適用がブロックされます。
@@ -41,15 +41,15 @@ resource "aws_s3_bucket_policy" "static_website" {
     Statement = [
       {
         # SIDはステートメントの識別子
-        Sid       = "PublicReadGetObject"
+        Sid = "PublicReadGetObject"
         # 許可
-        Effect    = "Allow"
+        Effect = "Allow"
         # 全員に対して
         Principal = "*"
         # オブジェクトの読み取り権限
-        Action    = "s3:GetObject"
+        Action = "s3:GetObject"
         # バケット内のすべて(*)のオブジェクトを対象
-        Resource  = "${aws_s3_bucket.static_website.arn}/*"
+        Resource = "${aws_s3_bucket.static_website.arn}/*"
       }
     ]
   })

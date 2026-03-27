@@ -39,10 +39,17 @@
 
 ### 5. バックエンド設定
 **優先度: 高**
-- [ ] Terraform State ファイルのリモート管理（S3 + DynamoDB）
-- [ ] State ファイルの暗号化
-- [ ] State ロック機能の実装
-- [ ] 複数人での作業を想定した設定
+- [x] Terraform State ファイルのリモート管理（S3 + DynamoDB）
+- [x] State ファイルの暗号化
+- [x] State ロック機能の実装
+- [x] 複数人での作業を想定した設定
+
+**実装メモ**:
+- `backend_bootstrap/` を追加し、state保存用S3バケットとlock用DynamoDBテーブルを別構成で先に作成できるようにした
+- 本体プロジェクトには `backend.tf` を追加し、`backend/dev.hcl` / `backend/prod.hcl` から環境別backend設定を読み込む方式にした
+- S3バケット側ではバージョニング・SSE-S3暗号化・パブリックアクセスブロックを有効化した
+- state lock は `use_lockfile = true` を前提にしつつ、既存運用との互換性のため `dynamodb_table` も設定可能な形にした
+- 補足: Terraform の S3 backend における DynamoDB ロックは deprecated のため、将来的には S3 lockfile ベースへ寄せるのが推奨
 
 **実装例**:
 ```terraform

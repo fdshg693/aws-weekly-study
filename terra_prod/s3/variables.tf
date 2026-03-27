@@ -13,7 +13,7 @@ variable "aws_region" {
   validation {
     # 以下の形式であることを担保
     # {a~zが2文字}-{a~zが1文字以上}-{0~9が1文字}
-    condition     = can(regex("^[a-z]{2}-[a-z]+-[0-9]$", var.aws_region))
+    condition = can(regex("^[a-z]{2}-[a-z]+-[0-9]$", var.aws_region))
     # 表示するエラーメッセージ
     error_message = "Region must be valid AWS region format (e.g., ap-northeast-1)."
   }

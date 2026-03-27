@@ -1,0 +1,9 @@
+aws_region      = "ap-northeast-1"
+project_name    = "terra-prod-s3"
+# state_bucket_name = "my-terraform-state-bucket"
+# lock_table_name   = "terraform-state-lock"
+# force_destroy_state_bucket = false
+
+tags = {
+  Owner = "learning"
+}

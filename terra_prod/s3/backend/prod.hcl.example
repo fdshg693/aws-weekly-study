@@ -1,0 +1,10 @@
+# 本番環境用 backend 設定例
+# 実ファイルは prod.hcl として作成し、terraform init -backend-config=backend/prod.hcl -reconfigure で利用します。
+# bucket と dynamodb_table は backend_bootstrap の output 値を設定してください。
+
+bucket         = "REPLACE_WITH_BOOTSTRAP_OUTPUT_BUCKET_NAME"
+key            = "terra_prod/s3/production/terraform.tfstate"
+region         = "ap-northeast-1"
+encrypt        = true
+use_lockfile   = true
+dynamodb_table = "REPLACE_WITH_BOOTSTRAP_OUTPUT_LOCK_TABLE_NAME"
