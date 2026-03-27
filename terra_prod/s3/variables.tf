@@ -30,3 +30,36 @@ variable "environment" {
     error_message = "Environment must be one of: development, production."
   }
 }
+
+variable "access_log_retention_days" {
+  description = "アクセスログを保持する日数"
+  type        = number
+  default     = 180
+
+  validation {
+    condition     = var.access_log_retention_days >= 30
+    error_message = "access_log_retention_days must be 30 or greater."
+  }
+}
+
+variable "access_log_transition_to_standard_ia_days" {
+  description = "アクセスログをSTANDARD_IAへ移行するまでの日数"
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.access_log_transition_to_standard_ia_days > 0 && var.access_log_transition_to_standard_ia_days < var.access_log_retention_days
+    error_message = "access_log_transition_to_standard_ia_days must be greater than 0 and less than access_log_retention_days."
+  }
+}
+
+variable "access_log_abort_incomplete_multipart_days" {
+  description = "未完了マルチパートアップロードを中断するまでの日数"
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.access_log_abort_incomplete_multipart_days > 0
+    error_message = "access_log_abort_incomplete_multipart_days must be greater than 0."
+  }
+}

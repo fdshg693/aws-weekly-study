@@ -18,6 +18,13 @@ locals {
   # 上のdataブロックと、TFVARSで指定されたリージョン変数を組み合わせて一意のバケット名を生成
   bucket_name = "static-website-${data.aws_caller_identity.current.account_id}-${var.aws_region}"
 
+  # アクセスログ保存用バケット名
+  log_bucket_name = "${local.bucket_name}-logs"
+
+  # ログの保存プレフィックス
+  s3_access_log_prefix         = "s3-access/"
+  cloudfront_access_log_prefix = "cloudfront/"
+
   # MIMEタイプマッピング
   mime_types = {
     "html" = "text/html"

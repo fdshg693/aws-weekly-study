@@ -20,3 +20,21 @@ output "website_url" {
   value       = "http://${aws_s3_bucket_website_configuration.static_website.website_endpoint}"
   sensitive   = false
 }
+
+output "access_log_bucket_name" {
+  description = "S3 access log bucket name"
+  value       = aws_s3_bucket.access_logs.id
+  sensitive   = false
+}
+
+output "s3_access_log_prefix" {
+  description = "S3 server access log prefix"
+  value       = local.s3_access_log_prefix
+  sensitive   = false
+}
+
+output "cloudfront_access_log_prefix" {
+  description = "Reserved CloudFront access log prefix for future integration"
+  value       = local.cloudfront_access_log_prefix
+  sensitive   = false
+}
