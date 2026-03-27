@@ -17,6 +17,26 @@ output "function_invoke_arn" {
   value       = aws_lambda_function.main.invoke_arn
 }
 
+output "api_gateway_name" {
+  description = "HTTP API Gatewayの名前"
+  value       = aws_apigatewayv2_api.lambda_http_api.name
+}
+
+output "api_gateway_id" {
+  description = "HTTP API GatewayのID"
+  value       = aws_apigatewayv2_api.lambda_http_api.id
+}
+
+output "api_gateway_stage_name" {
+  description = "HTTP API Gatewayのステージ名"
+  value       = aws_apigatewayv2_stage.default.name
+}
+
+output "api_invoke_url" {
+  description = "API Gateway経由でLambdaを呼び出すURL"
+  value       = aws_apigatewayv2_stage.default.invoke_url
+}
+
 output "function_version" {
   description = "Lambda関数の現在のバージョン"
   value       = aws_lambda_function.main.version
@@ -169,6 +189,21 @@ output "get_logs_command" {
   EOT
 }
 
+output "test_api_command" {
+  description = "API Gateway経由でLambda関数をテストするcurlコマンド"
+  value       = <<-EOT
+    # POSTでJSONボディを送信
+    curl -sS \
+      -X POST \
+      -H 'Content-Type: application/json' \
+      -d '{"name":"World","message":"Hello from API Gateway"}' \
+      ${aws_apigatewayv2_stage.default.invoke_url} | jq .
+
+    # GETでクエリ文字列を送信
+    curl -sS '${aws_apigatewayv2_stage.default.invoke_url}?name=World&message=Hello%20from%20query' | jq .
+  EOT
+}
+
 # =====================================
 # デプロイサマリー
 # =====================================
@@ -177,6 +212,7 @@ output "deployment_summary" {
   description = "デプロイメントの概要情報"
   value = {
     function_name   = aws_lambda_function.main.function_name
+    api_invoke_url  = aws_apigatewayv2_stage.default.invoke_url
     runtime         = aws_lambda_function.main.runtime
     memory_size_mb  = aws_lambda_function.main.memory_size
     timeout_seconds = aws_lambda_function.main.timeout

@@ -8,6 +8,7 @@
 4. JSON形式のレスポンス返却
 """
 
+import base64
 import json
 import os
 from datetime import datetime
@@ -23,6 +24,59 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_request_payload(event):
+    """API Gateway / 直接Invoke の両方から入力データを取り出す。"""
+    if not isinstance(event, dict):
+        return {}, {}
+
+    payload = {}
+    request_meta = {
+        'source': 'direct-invoke',
+        'raw_path': event.get('rawPath'),
+        'request_context': event.get('requestContext', {})
+    }
+
+    query_params = event.get('queryStringParameters') or {}
+    if isinstance(query_params, dict):
+        payload.update(query_params)
+
+    body = event.get('body')
+    if body:
+        request_meta['source'] = 'api-gateway'
+        if event.get('isBase64Encoded'):
+            body = base64.b64decode(body).decode('utf-8')
+
+        try:
+            parsed_body = json.loads(body)
+            if isinstance(parsed_body, dict):
+                payload.update(parsed_body)
+            else:
+                payload['body'] = parsed_body
+        except json.JSONDecodeError:
+            payload['body'] = body
+    elif 'requestContext' in event:
+        request_meta['source'] = 'api-gateway'
+
+    direct_fields = {
+        key: value
+        for key, value in event.items()
+        if key not in {
+            'version',
+            'routeKey',
+            'rawPath',
+            'rawQueryString',
+            'headers',
+            'requestContext',
+            'body',
+            'isBase64Encoded',
+            'queryStringParameters'
+        }
+    }
+    payload.update(direct_fields)
+
+    return payload, request_meta
 
 
 def lambda_handler(event, context):
@@ -65,13 +119,16 @@ def lambda_handler(event, context):
     # イベントの内容をログに出力（デバッグ用）
     logger.info(f"[DEBUG] Received event: {json.dumps(event)}")
     
+    # API Gatewayや直接Invokeから入力を抽出
+    request_payload, request_meta = _extract_request_payload(event)
+
     # 現在時刻を取得
     current_time = datetime.now().isoformat()
     
     # イベントからデータを抽出
     # eventは辞書型なので、.get()を使って安全にアクセス
-    name = event.get('name', 'World')
-    message = event.get('message', 'Hello')
+    name = request_payload.get('name', 'World')
+    message = request_payload.get('message', 'Hello')
     
     # レスポンスデータの作成
     response_data = {
@@ -80,7 +137,8 @@ def lambda_handler(event, context):
         'app_name': app_name,
         'request_id': context.aws_request_id,
         'greeting': f"{message}, {name}!",
-        'input_event': event,
+        'input_event': request_payload,
+        'request': request_meta,
         'function_info': {
             'name': context.function_name,
             'version': context.function_version,
@@ -103,55 +161,3 @@ def lambda_handler(event, context):
         },
         'body': json.dumps(response_data, ensure_ascii=False)
     }
-
-
-def validate_event(event):
-    """
-    イベントデータのバリデーション例
-    
-    実際のユースケースに応じて、必要なフィールドの存在確認や
-    データ型のチェックなどを実装できる
-    
-    Args:
-        event (dict): 検証するイベントデータ
-    
-    Returns:
-        tuple: (is_valid, error_message)
-    
-    Example:
-        is_valid, error = validate_event(event)
-        if not is_valid:
-            return {
-                'statusCode': 400,
-                'body': json.dumps({'error': error})
-            }
-    """
-    if not isinstance(event, dict):
-        return False, "Event must be a dictionary"
-    
-    return True, None
-
-
-def process_data(data):
-    """
-    データ処理のロジック例
-    
-    実際のビジネスロジックをここに実装する
-    - データベースへのクエリ
-    - 外部APIの呼び出し
-    - データ変換・集計
-    - ファイル処理
-    
-    Args:
-        data (dict): 処理するデータ
-    
-    Returns:
-        dict: 処理結果
-    """
-    # サンプル処理: 文字列の大文字変換
-    processed_data = {
-        'original': data,
-        'processed': str(data).upper()
-    }
-    
-    return processed_data

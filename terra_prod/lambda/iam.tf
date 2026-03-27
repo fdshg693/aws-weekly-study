@@ -8,10 +8,10 @@ resource "aws_iam_role" "lambda_role" {
   # ロール名
   # 環境名を含めることで環境ごとに分離
   name = "${var.environment}-${var.function_name}-role"
-  
+
   # ロールの説明
   description = "IAM role for ${var.environment}-${var.function_name} Lambda function"
-  
+
   # 信頼ポリシー（誰がこのロールを引き受けられるか）
   # Lambda サービスにこのロールの引き受けを許可
   assume_role_policy = jsonencode({
@@ -32,16 +32,16 @@ resource "aws_iam_role" "lambda_role" {
       }
     ]
   })
-  
+
   # ロールの最大セッション時間（秒）
   # デフォルト: 3600秒（1時間）
   # 範囲: 3600秒 〜 43200秒（12時間）
   max_session_duration = 3600
-  
+
   # パーミッション境界（オプション）
   # ロールに付与できる権限の上限を設定
   # permissions_boundary = "arn:aws:iam::aws:policy/PowerUserAccess"
-  
+
   tags = {
     Name        = "${var.environment}-${var.function_name}-role"
     Environment = var.environment
@@ -56,7 +56,7 @@ resource "aws_iam_role" "lambda_role" {
 resource "aws_iam_role_policy_attachment" "lambda_logs" {
   # アタッチ先のロール
   role = aws_iam_role.lambda_role.name
-  
+
   # AWSが管理する基本的な実行ポリシー
   # 以下の権限が含まれる:
   # - logs:CreateLogGroup
@@ -72,9 +72,9 @@ resource "aws_iam_role_policy_attachment" "lambda_logs" {
 # Lambda関数がVPC内で実行される場合に必要な権限
 resource "aws_iam_role_policy_attachment" "lambda_vpc" {
   count = var.enable_vpc ? 1 : 0
-  
+
   role = aws_iam_role.lambda_role.name
-  
+
   # VPC内での実行に必要な権限:
   # - ec2:CreateNetworkInterface
   # - ec2:DescribeNetworkInterfaces
@@ -91,9 +91,9 @@ resource "aws_iam_role_policy_attachment" "lambda_vpc" {
 # Lambda関数がAWS X-Rayにトレースデータを送信する権限
 resource "aws_iam_role_policy_attachment" "lambda_xray" {
   count = var.tracing_mode == "Active" ? 1 : 0
-  
+
   role = aws_iam_role.lambda_role.name
-  
+
   # X-Rayへのアクセス権限:
   # - xray:PutTraceSegments
   # - xray:PutTelemetryRecords
@@ -109,7 +109,7 @@ resource "aws_iam_role_policy_attachment" "lambda_xray" {
 resource "aws_iam_role_policy" "lambda_custom_policy" {
   name = "${var.environment}-${var.function_name}-custom-policy"
   role = aws_iam_role.lambda_role.id
-  
+
   # カスタムポリシードキュメント
   policy = jsonencode({
     Version = "2012-10-17"
@@ -136,7 +136,7 @@ resource "aws_iam_role_policy" "lambda_custom_policy" {
           "arn:aws:s3:::my-bucket-name"
         ]
       },
-      
+
       # DynamoDBテーブルへのアクセス権限の例
       # {
       #   Effect = "Allow"
@@ -152,7 +152,7 @@ resource "aws_iam_role_policy" "lambda_custom_policy" {
       #     "arn:aws:dynamodb:${var.aws_region}:*:table/my-table-name"
       #   ]
       # },
-      
+
       # SQSキューへのアクセス権限の例
       # {
       #   Effect = "Allow"
@@ -166,7 +166,7 @@ resource "aws_iam_role_policy" "lambda_custom_policy" {
       #     "arn:aws:sqs:${var.aws_region}:*:my-queue-name"
       #   ]
       # },
-      
+
       # Secrets Managerからのシークレット取得の例
       # {
       #   Effect = "Allow"
@@ -177,7 +177,7 @@ resource "aws_iam_role_policy" "lambda_custom_policy" {
       #     "arn:aws:secretsmanager:${var.aws_region}:*:secret:my-secret-*"
       #   ]
       # },
-      
+
       # Systems Manager Parameter Storeへのアクセスの例
       # {
       #   Effect = "Allow"
@@ -190,7 +190,7 @@ resource "aws_iam_role_policy" "lambda_custom_policy" {
       #     "arn:aws:ssm:${var.aws_region}:*:parameter/myapp/*"
       #   ]
       # },
-      
+
       # SNSトピックへの発行権限の例
       # {
       #   Effect = "Allow"
@@ -201,7 +201,7 @@ resource "aws_iam_role_policy" "lambda_custom_policy" {
       #     "arn:aws:sns:${var.aws_region}:*:my-topic-name"
       #   ]
       # },
-      
+
       # KMSキーの使用権限の例（暗号化・復号化）
       # {
       #   Effect = "Allow"

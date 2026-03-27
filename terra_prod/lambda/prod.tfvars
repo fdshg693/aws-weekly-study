@@ -18,17 +18,17 @@ runtime = "python3.12"
 handler = "lambda_function.lambda_handler"
 
 # リソース設定（本番環境はパフォーマンスと信頼性を重視）
-memory_size = 512  # MB（開発環境より高い値を設定）
-timeout     = 30   # 秒（余裕を持ったタイムアウト）
+memory_size = 512 # MB（開発環境より高い値を設定）
+timeout     = 30  # 秒（余裕を持ったタイムアウト）
 
 # ログ保持期間（本番環境は長期保存）
 log_retention_days = 90 # 90日間（コンプライアンス要件に応じて調整）
 
 # 環境変数
 environment_variables = {
-  LOG_LEVEL   = "INFO"            # 本番環境では必要な情報のみログ出力
-  DEBUG_MODE  = "false"           # デバッグモードを無効化
-  API_TIMEOUT = "10"              # API タイムアウト（秒）
+  LOG_LEVEL   = "INFO"  # 本番環境では必要な情報のみログ出力
+  DEBUG_MODE  = "false" # デバッグモードを無効化
+  API_TIMEOUT = "10"    # API タイムアウト（秒）
 }
 
 # VPC設定（本番環境でプライベートリソースにアクセスする場合）

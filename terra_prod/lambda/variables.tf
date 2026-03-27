@@ -6,7 +6,7 @@ variable "aws_region" {
   description = "Lambda関数をデプロイするAWSリージョン"
   type        = string
   default     = "ap-northeast-1" # 東京リージョン
-  
+
   # リージョン形式のバリデーション
   # 正しいAWSリージョンフォーマットであることを確認
   validation {
@@ -19,7 +19,7 @@ variable "environment" {
   description = "デプロイ環境（development, staging, production のいずれか）"
   type        = string
   default     = "development"
-  
+
   # 許可された環境名のみを受け付ける
   validation {
     condition     = contains(["development", "staging", "production"], var.environment)
@@ -35,7 +35,7 @@ variable "function_name" {
   description = "Lambda関数の名前。環境名が自動的にプレフィックスとして追加されます"
   type        = string
   default     = "simple-lambda-function"
-  
+
   validation {
     condition     = length(var.function_name) > 0 && length(var.function_name) <= 64
     error_message = "関数名は1〜64文字である必要があります"
@@ -55,7 +55,7 @@ variable "runtime" {
   EOT
   type        = string
   default     = "python3.12"
-  
+
   validation {
     condition = contains([
       "python3.9", "python3.10", "python3.11", "python3.12",
@@ -93,7 +93,7 @@ variable "memory_size" {
   EOT
   type        = number
   default     = 128
-  
+
   validation {
     condition     = var.memory_size >= 128 && var.memory_size <= 10240
     error_message = "メモリサイズは128〜10240MBの範囲である必要があります"
@@ -115,7 +115,7 @@ variable "timeout" {
   EOT
   type        = number
   default     = 3
-  
+
   validation {
     condition     = var.timeout >= 1 && var.timeout <= 900
     error_message = "タイムアウトは1〜900秒の範囲である必要があります"
@@ -163,7 +163,7 @@ variable "log_retention_days" {
   EOT
   type        = number
   default     = 7
-  
+
   validation {
     condition = contains([
       0, 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653
@@ -227,7 +227,7 @@ variable "reserved_concurrent_executions" {
   EOT
   type        = number
   default     = -1
-  
+
   validation {
     condition     = var.reserved_concurrent_executions >= -1
     error_message = "同時実行数は-1以上である必要があります"
@@ -299,9 +299,35 @@ variable "tracing_mode" {
   EOT
   type        = string
   default     = "PassThrough"
-  
+
   validation {
     condition     = contains(["PassThrough", "Active"], var.tracing_mode)
     error_message = "トレーシングモードは PassThrough または Active である必要があります"
+  }
+}
+
+# =====================================
+# API Gateway設定
+# =====================================
+
+variable "api_throttling_burst_limit" {
+  description = "API Gateway HTTP APIのバースト上限"
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.api_throttling_burst_limit > 0
+    error_message = "api_throttling_burst_limit は1以上である必要があります"
+  }
+}
+
+variable "api_throttling_rate_limit" {
+  description = "API Gateway HTTP APIの秒間レート上限"
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.api_throttling_rate_limit > 0
+    error_message = "api_throttling_rate_limit は0より大きい必要があります"
   }
 }
