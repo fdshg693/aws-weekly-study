@@ -6,7 +6,6 @@
 - `ecs`: ECS+Fargateを使って、簡単なWebサーバを構築
 - `kendra_s3`: S3に保存されたドキュメントをKendraで検索するプロジェクト
 - `kendra_web`: Webクローラーで収集したデータをKendraで検索するプロジェクト
-- `lambda`
 - `ollama_lambda_ec2`: EC2上のOllama（初期モデル: qwen2.5:0.5b）をLambda経由のAPIとして呼び出す構成
 - `s3_cloudfront`: S3とCloudFrontを使ったWEBサイトのホスティング
 - `sqs_lambda`
