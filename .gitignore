@@ -33,5 +33,5 @@ uv.lock
 # test用エージェント
 .github/agents/test.agent.md
 
-
+logs/
 
