@@ -1,0 +1,11 @@
+{
+  "subject": "terra_prod/lambda API Gateway throttling defaults",
+  "fact": "The HTTP API default stage applies throttling via variables `api_throttling_burst_limit` and `api_throttling_rate_limit`, whose defaults are burst 10 and rate 5 requests/second unless overridden.",
+  "citations": [
+    "terra_prod/lambda/api_gateway.tf:aws_apigatewayv2_stage.default.default_route_settings",
+    "terra_prod/lambda/variables.tf:variable.api_throttling_burst_limit",
+    "terra_prod/lambda/variables.tf:variable.api_throttling_rate_limit"
+  ],
+  "reason": "This explains why load tests can produce many 429 responses even when Lambda itself is healthy, and it is useful for future debugging and threshold tuning.",
+  "category": "infrastructure"
+}

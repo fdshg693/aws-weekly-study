@@ -30,6 +30,8 @@ uv.lock
 
 # etc
 **.zip
+*.tar
+*.tar.gz
 # test用エージェント
 .github/agents/test.agent.md
 

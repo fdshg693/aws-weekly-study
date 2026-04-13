@@ -2,6 +2,8 @@ ENV ?= dev
 API_URL ?=
 REQUEST_NAME ?= k6
 REQUEST_MESSAGE ?= Hello from k6
+STAGE_COUNT ?= 3
+STAGE_DURATION ?= 30s
 
 TFVARS_dev := dev.tfvars
 TFVARS_prod := prod.tfvars
@@ -28,6 +30,16 @@ help:
 	@echo "  output    Show Terraform outputs"
 	@echo "  test      Test deployed API Gateway endpoint"
 	@echo "  load-test Run k6 load test for GET/POST API Gateway endpoint and save logs"
+	@echo ""
+	@echo "load-test options:"
+	@echo "  STAGE_COUNT=<n>       Number of load stages (default: $(STAGE_COUNT))"
+	@echo "  STAGE_DURATION=<dur>  Duration per stage, e.g. 10s, 1m (default: $(STAGE_DURATION))"
+	@echo "  REQUEST_NAME=<name>   Prefix for request payload/query values"
+	@echo "  REQUEST_MESSAGE=<msg> Message value sent in requests"
+	@echo "  THROTTLED_RATE_THRESHOLD=<rate>         Allowed 429 ratio (default: k6 script default)"
+	@echo "  UNEXPECTED_FAILURE_RATE_THRESHOLD=<rate> Allowed unexpected failure ratio (default: k6 script default)"
+	@echo "  LOG_THROTTLED_RESPONSES=true            Sample a few 429 warnings in k6 output"
+	@echo "  API_URL=<url>         Override terraform output api_invoke_url"
 
 init: check-env
 	terraform init
@@ -69,5 +81,6 @@ load-test: check-env
 	mkdir -p "$$LOG_DIR"; \
 	echo "Saving k6 stdout log to: $$STDOUT_LOG"; \
 	echo "Saving k6 summary JSON to: $$SUMMARY_JSON"; \
-	API_URL="$$API_URL_VALUE" REQUEST_NAME="$(REQUEST_NAME)" REQUEST_MESSAGE="$(REQUEST_MESSAGE)" \
+	echo "Running load test with STAGE_COUNT=$(STAGE_COUNT), STAGE_DURATION=$(STAGE_DURATION)"; \
+	API_URL="$$API_URL_VALUE" REQUEST_NAME="$(REQUEST_NAME)" REQUEST_MESSAGE="$(REQUEST_MESSAGE)" STAGE_COUNT="$(STAGE_COUNT)" STAGE_DURATION="$(STAGE_DURATION)" THROTTLED_RATE_THRESHOLD="$(THROTTLED_RATE_THRESHOLD)" UNEXPECTED_FAILURE_RATE_THRESHOLD="$(UNEXPECTED_FAILURE_RATE_THRESHOLD)" LOG_THROTTLED_RESPONSES="$(LOG_THROTTLED_RESPONSES)" \
 	k6 run --summary-export "$$SUMMARY_JSON" ./k6_api_test.js 2>&1 | tee "$$STDOUT_LOG"
