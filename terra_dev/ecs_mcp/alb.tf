@@ -1,6 +1,5 @@
 # ALB（Application Load Balancer）
-# HTTPS 終端、OIDC 認証、/mcp のパス転送を担当する。
-# 認証をアプリではなく ALB で行うことで、FastMCP 側のコード変更を避ける。
+# HTTPS 終端と /mcp のパス転送を担当する。
 
 locals {
   public_hostname = var.app_domain_name != "" ? var.app_domain_name : aws_lb.main.dns_name
@@ -151,47 +150,9 @@ resource "aws_lb_listener_rule" "health" {
   }
 }
 
-# 認証ありパターン。
-# /mcp* に来たリクエストを OIDC 認証してから ECS へ転送する。
-resource "aws_lb_listener_rule" "mcp_with_auth" {
-  count        = var.enable_oidc_auth ? 1 : 0
-  listener_arn = aws_lb_listener.https.arn
-  priority     = 100
-
-  action {
-    type = "authenticate-oidc"
-
-    authenticate_oidc {
-      issuer                              = local.resolved_oidc_issuer
-      authorization_endpoint              = local.resolved_oidc_authorization_endpoint
-      token_endpoint                      = local.resolved_oidc_token_endpoint
-      user_info_endpoint                  = local.resolved_oidc_user_info_endpoint
-      client_id                           = local.resolved_oidc_client_id
-      client_secret                       = local.resolved_oidc_client_secret
-      scope                               = var.oidc_scope
-      session_cookie_name                 = var.oidc_session_cookie_name
-      session_timeout                     = var.oidc_session_timeout
-      on_unauthenticated_request          = var.oidc_on_unauthenticated_request
-      authentication_request_extra_params = var.oidc_authentication_request_extra_params
-    }
-  }
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.main.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["${var.mcp_path}*"]
-    }
-  }
-}
-
-# 認証なしパターン。
-# OIDC をまだ用意していない学習段階でも Terraform 全体は試せるようにしておく。
-resource "aws_lb_listener_rule" "mcp_without_auth" {
-  count        = var.enable_oidc_auth ? 0 : 1
+# /mcp* は ECS タスクへ転送する。
+# 認証自体はアプリケーション側（server-side OAuth）で実施する。
+resource "aws_lb_listener_rule" "mcp" {
   listener_arn = aws_lb_listener.https.arn
   priority     = 100
 

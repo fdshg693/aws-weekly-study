@@ -20,14 +20,25 @@ container_memory = 512
 desired_count = 0
 image_tag     = "latest"
 
-# ALB OIDC 認証（アプリ無改造）
-enable_oidc_auth                = true
-oidc_issuer                     = "https://example.com"
-oidc_authorization_endpoint     = "https://example.com/oauth2/authorize"
-oidc_token_endpoint             = "https://example.com/oauth2/token"
-oidc_user_info_endpoint         = "https://example.com/oauth2/userinfo"
-oidc_client_id                  = "REPLACE_ME"
-oidc_client_secret              = "REPLACE_ME"
-oidc_scope                      = "openid profile email"
-oidc_session_timeout            = 604800
-oidc_on_unauthenticated_request = "authenticate"
+enable_server_oauth = true
+
+# AWS 管理 Keycloak 設定
+deploy_keycloak_on_aws   = true
+keycloak_path            = "/keycloak"
+keycloak_realm           = "mcp"
+keycloak_admin_username  = "admin"
+keycloak_admin_password  = "REPLACE_ME_KEYCLOAK_ADMIN_PASSWORD"
+keycloak_db_password     = "REPLACE_ME_KEYCLOAK_DB_PASSWORD"
+
+# Keycloak realm / client は初回起動後に Admin Console で作成する
+keycloak_public_client_id            = "claude-desktop"
+keycloak_introspection_client_id     = "mcp-resource-server"
+keycloak_introspection_client_secret = "REPLACE_ME"
+
+# 外部 Keycloak を使う場合のみ指定する
+# keycloak_base_url = "https://keycloak.example.com"
+
+keycloak_enable_dynamic_client_registration = false
+
+oauth_supported_scopes = ["mcp:tools"]
+oauth_required_scopes  = ["mcp:tools"]

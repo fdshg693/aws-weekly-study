@@ -72,6 +72,10 @@ resource "aws_ecs_task_definition" "main" {
             value = tostring(var.container_port)
           },
           {
+            name  = "PUBLIC_BASE_URL"
+            value = "https://${local.public_hostname}"
+          },
+          {
             name  = "MCP_PATH"
             value = var.mcp_path
           },
@@ -81,7 +85,7 @@ resource "aws_ecs_task_definition" "main" {
           }
         ],
         # サーバーサイド OAuth 有効時に追加する環境変数。
-        # server.py が OAUTH_ISSUER の存在を見て OAuth 認証を有効化する。
+        # Keycloak introspection を使って毎リクエスト認証する。
         var.enable_server_oauth ? [
           {
             name  = "OAUTH_ISSUER"
@@ -96,12 +100,36 @@ resource "aws_ecs_task_definition" "main" {
             value = local.resolved_oidc_token_endpoint
           },
           {
-            name  = "PUBLIC_HOSTNAME"
-            value = local.public_hostname
+            name  = "OAUTH_REGISTRATION_ENDPOINT"
+            value = local.resolved_oidc_registration_endpoint
           },
           {
-            name  = "OAUTH_CLIENT_ID"
-            value = local.server_oauth_client_id
+            name  = "OAUTH_PUBLIC_CLIENT_ID"
+            value = var.keycloak_public_client_id
+          },
+          {
+            name  = "OAUTH_INTROSPECTION_ENDPOINT"
+            value = local.resolved_oidc_introspection_endpoint
+          },
+          {
+            name  = "OAUTH_INTROSPECTION_CLIENT_ID"
+            value = var.keycloak_introspection_client_id
+          },
+          {
+            name  = "OAUTH_INTROSPECTION_CLIENT_SECRET"
+            value = var.keycloak_introspection_client_secret
+          },
+          {
+            name  = "OAUTH_SUPPORTED_SCOPES"
+            value = join(" ", local.resolved_oidc_scopes)
+          },
+          {
+            name  = "OAUTH_REQUIRED_SCOPES"
+            value = join(" ", var.oauth_required_scopes)
+          },
+          {
+            name  = "OAUTH_EXPECTED_AUDIENCES"
+            value = jsonencode(local.resolved_expected_audiences)
           }
         ] : []
       )

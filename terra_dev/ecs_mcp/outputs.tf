@@ -23,19 +23,19 @@ output "health_url" {
   value       = "https://${local.public_hostname}/health"
 }
 
-output "oidc_redirect_uri" {
-  description = "Callback URL that must be registered on the OIDC provider"
-  value       = "https://${local.public_hostname}/oauth2/idpresponse"
+output "keycloak_base_url" {
+  description = "Keycloak base URL used by the MCP authorization flow"
+  value       = local.keycloak_base_url
 }
 
-output "cognito_user_pool_id" {
-  description = "Cognito User Pool ID（use_cognito = true の場合のみ）"
-  value       = var.use_cognito ? aws_cognito_user_pool.main[0].id : null
+output "keycloak_realm_url" {
+  description = "Keycloak realm URL used by the MCP authorization flow"
+  value       = local.keycloak_realm_url
 }
 
-output "cognito_hosted_ui_url" {
-  description = "Cognito Hosted UI のベース URL"
-  value       = var.use_cognito ? "https://${aws_cognito_user_pool_domain.main[0].domain}.auth.${var.aws_region}.amazoncognito.com" : null
+output "keycloak_openid_configuration_url" {
+  description = "Keycloak OIDC discovery URL"
+  value       = "${local.keycloak_realm_url}/.well-known/openid-configuration"
 }
 
 output "ecs_cluster_name" {
@@ -58,15 +58,35 @@ output "cloudwatch_log_group" {
   value       = aws_cloudwatch_log_group.ecs.name
 }
 
+output "keycloak_admin_console_url" {
+  description = "Keycloak admin console URL when deploy_keycloak_on_aws = true"
+  value       = var.deploy_keycloak_on_aws ? "${local.keycloak_base_url}/admin/" : null
+}
+
+output "keycloak_ecs_service_name" {
+  description = "Keycloak ECS service name when deploy_keycloak_on_aws = true"
+  value       = var.deploy_keycloak_on_aws ? aws_ecs_service.keycloak[0].name : null
+}
+
+output "keycloak_database_endpoint" {
+  description = "Keycloak PostgreSQL endpoint when deploy_keycloak_on_aws = true"
+  value       = var.deploy_keycloak_on_aws ? aws_db_instance.keycloak[0].address : null
+}
+
 #-------------------------------------------------------------------------------
 # Claude Desktop 連携情報（enable_server_oauth = true の場合のみ）
 #-------------------------------------------------------------------------------
 output "claude_desktop_client_id" {
-  description = "Claude Desktop の Connector 設定で使う Cognito Client ID"
-  value       = var.use_cognito && var.enable_server_oauth ? aws_cognito_user_pool_client.claude_desktop[0].id : null
+  description = "Claude Desktop の Connector 設定で使う public client ID（事前登録運用時のみ）"
+  value       = var.enable_server_oauth && !var.keycloak_enable_dynamic_client_registration ? var.keycloak_public_client_id : null
 }
 
 output "claude_desktop_connector_url" {
   description = "Claude Desktop の Settings > Connectors に登録する URL"
   value       = var.enable_server_oauth ? "https://${local.public_hostname}${var.mcp_path}" : null
+}
+
+output "keycloak_registration_endpoint" {
+  description = "Keycloak Dynamic Client Registration endpoint（有効時のみ）"
+  value       = var.keycloak_enable_dynamic_client_registration ? local.resolved_oidc_registration_endpoint : null
 }

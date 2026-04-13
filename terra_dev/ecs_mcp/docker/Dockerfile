@@ -6,6 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app/python \
     HOST=0.0.0.0 \
     PORT=8000 \
+    PUBLIC_BASE_URL=https://localhost \
     MCP_PATH=/mcp \
     MCP_STATELESS_HTTP=true
 
@@ -18,6 +19,7 @@ RUN pip install --no-cache-dir -r /app/docker/requirements.txt
 # main.py はそのままコピーし、HTTP 化はラッパー側で行う。
 COPY python/main.py /app/python/main.py
 COPY docker/server.py /app/docker/server.py
+COPY docker/mcp_gateway /app/docker/mcp_gateway
 
 EXPOSE 8000
 

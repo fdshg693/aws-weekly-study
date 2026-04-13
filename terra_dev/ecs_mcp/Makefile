@@ -77,7 +77,6 @@ urls: ## 公開 URL / ECR URL / OIDC callback URL を表示
 	@terraform output -raw https_base_url 2>/dev/null | sed 's#^#Base URL: #' || echo "Base URL: (未作成)"
 	@terraform output -raw mcp_url 2>/dev/null | sed 's#^#MCP URL:  #' || echo "MCP URL:  (未作成)"
 	@terraform output -raw health_url 2>/dev/null | sed 's#^#Health:   #' || echo "Health:   (未作成)"
-	@terraform output -raw oidc_redirect_uri 2>/dev/null | sed 's#^#OIDC CB:  #' || echo "OIDC CB:  (未作成)"
 	@terraform output -raw ecr_repository_url 2>/dev/null | sed 's#^#ECR:      #' || echo "ECR:      (未作成)"
 
 docker-login: check-tools ## ECR へ Docker ログイン
