@@ -39,6 +39,12 @@ authorizer_cache_ttl_seconds           = 0
 api_key_rotation_days                  = 30
 api_key_secret_recovery_window_in_days = 7
 api_key_length                         = 48
+cors_allow_origins = [
+  "http://localhost:8080",
+  "http://127.0.0.1:8080",
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
+]
 
 # VPC設定（本番環境でプライベートリソースにアクセスする場合）
 # 以下は例です。実際の環境に合わせて変更してください

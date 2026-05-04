@@ -332,6 +332,77 @@ variable "api_throttling_rate_limit" {
   }
 }
 
+variable "get_route_throttling_burst_limit" {
+  description = "API Gateway HTTP API の GET / ルートに適用するバースト上限"
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.get_route_throttling_burst_limit > 0
+    error_message = "get_route_throttling_burst_limit は1以上である必要があります"
+  }
+}
+
+variable "get_route_throttling_rate_limit" {
+  description = "API Gateway HTTP API の GET / ルートに適用する秒間レート上限"
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.get_route_throttling_rate_limit > 0
+    error_message = "get_route_throttling_rate_limit は0より大きい必要があります"
+  }
+}
+
+variable "post_route_throttling_burst_limit" {
+  description = "API Gateway HTTP API の POST / ルートに適用するバースト上限"
+  type        = number
+  default     = 4
+
+  validation {
+    condition     = var.post_route_throttling_burst_limit > 0
+    error_message = "post_route_throttling_burst_limit は1以上である必要があります"
+  }
+}
+
+variable "post_route_throttling_rate_limit" {
+  description = "API Gateway HTTP API の POST / ルートに適用する秒間レート上限"
+  type        = number
+  default     = 4
+
+  validation {
+    condition     = var.post_route_throttling_rate_limit > 0
+    error_message = "post_route_throttling_rate_limit は0より大きい必要があります"
+  }
+}
+
+variable "cors_allow_origins" {
+  description = <<-EOT
+    API Gateway HTTP API の CORS で許可する Origin 一覧
+
+    例:
+    - http://localhost:8080
+    - http://127.0.0.1:8080
+    - https://example.com
+
+    注意:
+    - 直接ファイルを開く file:// 起点のアクセスはブラウザ側の制約があるため非推奨
+    - ローカル検証では NGINX などで http://localhost:xxxx として配信する前提
+  EOT
+  type        = list(string)
+  default = [
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+  ]
+
+  validation {
+    condition     = length(var.cors_allow_origins) > 0
+    error_message = "cors_allow_origins には少なくとも1つの Origin を指定してください"
+  }
+}
+
 # =====================================
 # Bedrock / API key 認証設定
 # =====================================

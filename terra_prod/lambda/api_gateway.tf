@@ -54,9 +54,9 @@ resource "aws_apigatewayv2_api" "lambda_http_api" {
     allow_methods = ["GET", "OPTIONS", "POST"]
 
     # 呼び出しを許可する Origin。
-    # "*" は任意のオリジンを許可する設定。
-    # 学習用途では分かりやすいが、本番用途では必要に応じて絞る方が安全。
-    allow_origins = ["*"]
+    # ローカル検証用の localhost / 127.0.0.1 を tfvars から明示指定できるようにしている。
+    # 必要に応じて本番のフロントエンド Origin もここへ追加する。
+    allow_origins = var.cors_allow_origins
 
     # ブラウザが preflight 結果をキャッシュしてよい秒数。
     # 300 秒の間は毎回 OPTIONS を打たずに済む場合がある。
@@ -181,6 +181,22 @@ resource "aws_apigatewayv2_stage" "default" {
 
     # 平均的なリクエストレート上限。
     throttling_rate_limit = var.api_throttling_rate_limit
+  }
+
+  route_settings {
+    route_key = aws_apigatewayv2_route.get_root.route_key
+
+    detailed_metrics_enabled = false
+    throttling_burst_limit   = var.get_route_throttling_burst_limit
+    throttling_rate_limit    = var.get_route_throttling_rate_limit
+  }
+
+  route_settings {
+    route_key = aws_apigatewayv2_route.post_root.route_key
+
+    detailed_metrics_enabled = false
+    throttling_burst_limit   = var.post_route_throttling_burst_limit
+    throttling_rate_limit    = var.post_route_throttling_rate_limit
   }
 
   access_log_settings {

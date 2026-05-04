@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lambda Demo App</title>
+    <meta
+      name="description"
+      content="API Gateway + Lambda + Bedrock API をローカルから手軽に試すためのシンプルな静的 Web アプリ"
+    />
+    <link rel="stylesheet" href="./assets/styles.css" />
+    <script defer src="./assets/js/storage.js"></script>
+    <script defer src="./assets/js/api.js"></script>
+    <script defer src="./assets/js/app.js"></script>
+  </head>
+  <body>
+    <noscript>
+      <div class="noscript-banner">
+        このデモアプリを使うには JavaScript を有効にしてください。
+      </div>
+    </noscript>
+
+    <div class="page-shell">
+      <header class="hero">
+        <p class="eyebrow">Lambda Demo App</p>
+        <h1>ローカルから API Gateway 経由で Lambda を呼び出す</h1>
+        <p class="hero-copy">
+          Terraform で構築した <code>GET /</code> と <code>POST /</code> を、ブラウザからさっと確認するための軽量フロントです。
+          ビルド不要、依存なし、でも使い勝手はちゃんと確保しました。
+        </p>
+        <div class="hero-tags">
+          <span>静的サイト</span>
+          <span>HTML / CSS / JavaScript</span>
+          <span>ローカル保存対応</span>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="card" aria-labelledby="connection-title">
+          <div class="card-header">
+            <div>
+              <p class="card-kicker">接続設定</p>
+              <h2 id="connection-title">API URL と API キー</h2>
+            </div>
+            <span id="status-badge" class="status-badge neutral">待機中</span>
+          </div>
+
+          <form id="settings-form" class="stack-lg" novalidate>
+            <div class="field-grid">
+              <label class="field">
+                <span>API URL</span>
+                <input
+                  id="api-url"
+                  name="apiUrl"
+                  type="url"
+                  inputmode="url"
+                  placeholder="https://xxxx.execute-api.ap-northeast-1.amazonaws.com/"
+                  autocomplete="off"
+                  required
+                />
+                <small>Terraform の <code>api_invoke_url</code> をそのまま貼り付けます。</small>
+              </label>
+
+              <label class="field">
+                <span>API Key</span>
+                <div class="input-with-button">
+                  <input
+                    id="api-key"
+                    name="apiKey"
+                    type="password"
+                    placeholder="x-api-key の値"
+                    autocomplete="off"
+                    required
+                  />
+                  <button id="toggle-api-key" type="button" class="ghost-button compact">表示</button>
+                </div>
+                <small>Secrets Manager から取得した API キーを入力します。</small>
+              </label>
+            </div>
+
+            <div class="inline-options">
+              <label class="checkbox-row">
+                <input id="remember-settings" name="rememberSettings" type="checkbox" checked />
+                <span>このブラウザに設定を保存する</span>
+              </label>
+              <p class="hint">API キーがローテーションされたら、ここも更新してください。</p>
+            </div>
+
+            <div class="button-row">
+              <button id="save-settings" type="submit" class="primary-button">設定を保存</button>
+              <button id="clear-settings" type="button" class="secondary-button">保存済み設定を削除</button>
+              <button id="health-check" type="button" class="ghost-button">GET / を確認</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card" aria-labelledby="prompt-title">
+          <div class="card-header">
+            <div>
+              <p class="card-kicker">Bedrock 呼び出し</p>
+              <h2 id="prompt-title">POST / にプロンプトを送る</h2>
+            </div>
+          </div>
+
+          <form id="prompt-form" class="stack-lg" novalidate>
+            <label class="field">
+              <span>Prompt</span>
+              <textarea
+                id="prompt-input"
+                name="prompt"
+                rows="6"
+                placeholder="AWS Lambda を初心者向けに説明してください"
+                required
+              ></textarea>
+              <small><code>{"prompt":"..."}</code> の形で API に送信されます。</small>
+            </label>
+
+            <div class="button-row">
+              <button id="submit-prompt" type="submit" class="primary-button">POST / を実行</button>
+              <button id="load-sample" type="button" class="ghost-button">サンプル文を入れる</button>
+              <button id="reset-prompt" type="button" class="ghost-button">プロンプトをクリア</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card" aria-labelledby="result-title">
+          <div class="card-header">
+            <div>
+              <p class="card-kicker">レスポンス</p>
+              <h2 id="result-title">結果表示</h2>
+            </div>
+            <div class="result-meta">
+              <span id="http-status" class="meta-pill">-</span>
+              <span id="latency" class="meta-pill">- ms</span>
+            </div>
+          </div>
+
+          <div class="result-grid">
+            <article class="result-panel">
+              <h3>要約</h3>
+              <dl id="summary-list" class="summary-list">
+                <div>
+                  <dt>状態</dt>
+                  <dd>まだ実行していません</dd>
+                </div>
+              </dl>
+            </article>
+
+            <article class="result-panel">
+              <h3>生成テキスト</h3>
+              <div id="output-text" class="output-box muted">
+                POST / を実行すると、Bedrock の応答テキストをここに表示します。
+              </div>
+            </article>
+          </div>
+
+          <article class="result-panel stack-md">
+            <div class="result-panel-header">
+              <h3>Raw JSON</h3>
+              <button id="copy-json" type="button" class="ghost-button compact">コピー</button>
+            </div>
+            <pre id="raw-json" class="code-block">{
+  "message": "まだレスポンスがありません"
+}</pre>
+          </article>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

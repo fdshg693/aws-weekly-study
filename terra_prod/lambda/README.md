@@ -51,6 +51,9 @@ Secrets Manager
 - **運用しやすさ重視**: `terraform output -raw api_key_secret_name` や `make get-api-key` でローカルから取得しやすくしています。
 - **Bedrock モデルは変数化**: `bedrock_model_id` を tfvars で切り替え可能です。
 - **Authorizer キャッシュをデフォルト無効**: ローテーション後に古いキーを引きずりにくくしています。
+- **CORS Origin は変数化**: `cors_allow_origins` で localhost や必要なフロントエンド Origin を明示許可できます。
+- **ルート別スロットリング**: `GET /` は秒10、`POST /` は秒4をデフォルトにしています。
+- **Bedrock エラーを透過**: Lambda が Bedrock の 429 / 503 などを検知し、構造化した JSON でクライアントへ返します。
 
 ## 構成ファイル
 - `lambda.tf` - Lambda / Secrets Manager / Rotation 定義
@@ -60,6 +63,7 @@ Secrets Manager
 - `outputs.tf` - API URL、シークレット名、CLI コマンド例
 - `dev.tfvars` / `prod.tfvars` - 環境別設定
 - `Makefile` - Terraform / API key / テスト / k6 実行
+- `demo-app/` - ローカルのブラウザから API を試すための静的 Web サイト
 - `src/lambda_function.py` - Bedrock 呼び出し本体
 - `src/authorizer.py` - `x-api-key` 検証
 - `src/rotation_lambda.py` - API キーローテーション
@@ -163,6 +167,19 @@ PROMPT="Bedrock とは何ですか？" \
 make test ENV=dev
 ```
 
+## ローカル用デモ画面
+
+`demo-app/` 配下に、ローカルのブラウザからこの API を簡単に叩くための静的 Web サイトを用意しています。
+
+- `GET /` のヘルスチェックが可能
+- `POST /` に Prompt を送って Bedrock 応答を確認可能
+- API URL / API Key / Prompt をブラウザに保存可能
+- Homebrew で入れた `nginx` 経由で `http://localhost:8080` から配信可能
+
+`file://` で直接 HTML を開く方法はブラウザ制約の影響を受けやすいため、`make demo-app-up` でローカル `nginx` 配信する使い方を推奨します。
+
+詳しい使い方は `demo-app/README.md` を参照してください。
+
 ## 負荷試験（k6）
 
 `k6_api_test.js` は、認証付き `GET /` と `POST /` を別シナリオで同時実行し、以下を確認しやすくしています。
@@ -212,9 +229,12 @@ k6 run ./k6_api_test.js
 - `bedrock_model_id` - 呼び出す Bedrock モデル ID
 - `bedrock_max_tokens` - 最大生成トークン数
 - `bedrock_temperature` - temperature
+- `cors_allow_origins` - CORS で許可する Origin 一覧（例: `http://localhost:8080`）
 - `authorizer_cache_ttl_seconds` - Authorizer 結果キャッシュ秒数
 - `api_key_rotation_days` - 自動ローテーション間隔
 - `api_key_length` - 生成 API キー長
+- `get_route_throttling_rate_limit` - `GET /` の秒間レート上限（デフォルト: 10）
+- `post_route_throttling_rate_limit` - `POST /` の秒間レート上限（デフォルト: 4）
 
 ## 注意事項
 - Lambda コードを変更したら `terraform apply` を実行してください
@@ -223,3 +243,4 @@ k6 run ./k6_api_test.js
 - API キーの取得元は Secrets Manager です
 - ローテーション直後は、取得済みの古い API キーでは認証に失敗します
 - Bedrock POST を伴う負荷試験はコストに注意してください
+- Bedrock 側でスロットリングや一時障害が起きた場合、API は `429` / `503` などの上流ステータスとエラーコードを JSON で返します

@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timezone
 
 import boto3
@@ -19,6 +20,30 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 bedrock_runtime = boto3.client("bedrock-runtime")
+
+BEDROCK_ERROR_STATUS_CODES = {
+    "AccessDeniedException": 403,
+    "ResourceNotFoundException": 404,
+    "ThrottlingException": 429,
+    "TooManyRequestsException": 429,
+    "ValidationException": 400,
+    "ServiceUnavailableException": 503,
+    "ModelNotReadyException": 503,
+    "ModelTimeoutException": 504,
+    "InternalServerException": 502,
+}
+
+RETRYABLE_BEDROCK_ERROR_CODES = {
+    "ModelNotReadyException",
+    "ModelTimeoutException",
+    "ServiceUnavailableException",
+    "ThrottlingException",
+    "TooManyRequestsException",
+}
+
+RETRYABLE_BEDROCK_STATUS_CODES = {429, 502, 503, 504}
+BEDROCK_RETRY_WAIT_SECONDS = 5
+BEDROCK_MAX_RETRIES = 1
 
 
 def _response(status_code, payload):
@@ -94,6 +119,105 @@ def _health_payload(context):
     }
 
 
+def _build_bedrock_error_response(exc, context, model_id):
+    error_response = getattr(exc, "response", {}) or {}
+    error = error_response.get("Error", {}) or {}
+    metadata = error_response.get("ResponseMetadata", {}) or {}
+
+    error_code = error.get("Code") or exc.__class__.__name__
+    error_message = error.get("Message") or str(exc)
+    upstream_status_code = metadata.get("HTTPStatusCode")
+
+    if isinstance(upstream_status_code, int) and 400 <= upstream_status_code <= 599:
+        status_code = upstream_status_code
+    else:
+        status_code = BEDROCK_ERROR_STATUS_CODES.get(error_code, 502)
+
+    return _response(
+        status_code,
+        {
+            "error": "Bedrock request failed",
+            "bedrock_error_code": error_code,
+            "bedrock_error_message": error_message,
+            "upstream_status_code": upstream_status_code,
+            "retryable": error_code in RETRYABLE_BEDROCK_ERROR_CODES or status_code in {429, 502, 503, 504},
+            "request_id": context.aws_request_id,
+            "bedrock_request_id": metadata.get("RequestId"),
+            "model_id": model_id,
+        },
+    )
+
+
+def _is_retryable_client_error(exc):
+    error_response = getattr(exc, "response", {}) or {}
+    error = error_response.get("Error", {}) or {}
+    metadata = error_response.get("ResponseMetadata", {}) or {}
+
+    error_code = error.get("Code") or exc.__class__.__name__
+    upstream_status_code = metadata.get("HTTPStatusCode")
+
+    return (
+        error_code in RETRYABLE_BEDROCK_ERROR_CODES
+        or upstream_status_code in RETRYABLE_BEDROCK_STATUS_CODES
+    )
+
+
+def _has_retry_time_remaining(context):
+    remaining_millis = getattr(context, "get_remaining_time_in_millis", lambda: 0)()
+    return remaining_millis >= ((BEDROCK_RETRY_WAIT_SECONDS + 1) * 1000)
+
+
+def _invoke_bedrock_with_retry(model_id, prompt, max_tokens, temperature, context):
+    last_exception = None
+
+    for attempt in range(BEDROCK_MAX_RETRIES + 1):
+        try:
+            response = bedrock_runtime.converse(
+                modelId=model_id,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [{"text": prompt}],
+                    }
+                ],
+                inferenceConfig={
+                    "maxTokens": max_tokens,
+                    "temperature": temperature,
+                },
+            )
+            return response, attempt
+        except ClientError as exc:
+            last_exception = exc
+            should_retry = attempt < BEDROCK_MAX_RETRIES and _is_retryable_client_error(exc) and _has_retry_time_remaining(context)
+            if not should_retry:
+                raise
+
+            logger.warning(
+                "Retryable Bedrock client error detected (%s). Waiting %s seconds before retry %s/%s.",
+                exc,
+                BEDROCK_RETRY_WAIT_SECONDS,
+                attempt + 1,
+                BEDROCK_MAX_RETRIES,
+            )
+            time.sleep(BEDROCK_RETRY_WAIT_SECONDS)
+        except BotoCoreError as exc:
+            last_exception = exc
+            should_retry = attempt < BEDROCK_MAX_RETRIES and _has_retry_time_remaining(context)
+            if not should_retry:
+                raise
+
+            logger.warning(
+                "Retryable Bedrock SDK error detected (%s). Waiting %s seconds before retry %s/%s.",
+                exc,
+                BEDROCK_RETRY_WAIT_SECONDS,
+                attempt + 1,
+                BEDROCK_MAX_RETRIES,
+            )
+            time.sleep(BEDROCK_RETRY_WAIT_SECONDS)
+
+    raise last_exception
+
+
 def lambda_handler(event, context):
     environment = os.environ.get("ENVIRONMENT", "unknown")
     app_name = os.environ.get("APP_NAME", "lambda-function")
@@ -122,28 +246,27 @@ def lambda_handler(event, context):
         )
 
     try:
-        bedrock_response = bedrock_runtime.converse(
-            modelId=model_id,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [{"text": prompt}],
-                }
-            ],
-            inferenceConfig={
-                "maxTokens": max_tokens,
-                "temperature": temperature,
-            },
+        bedrock_response, retry_count = _invoke_bedrock_with_retry(
+            model_id=model_id,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            context=context,
         )
-    except (ClientError, BotoCoreError) as exc:
+    except ClientError as exc:
+        logger.exception("Bedrock returned a client error: %s", exc)
+        return _build_bedrock_error_response(exc, context, model_id)
+    except BotoCoreError as exc:
         logger.exception("Failed to invoke Bedrock model: %s", exc)
         return _response(
             502,
             {
                 "error": "Failed to invoke Bedrock",
-                "details": str(exc),
+                "bedrock_error_code": exc.__class__.__name__,
+                "bedrock_error_message": str(exc),
                 "request_id": context.aws_request_id,
                 "model_id": model_id,
+                "retryable": True,
             },
         )
 
@@ -159,6 +282,7 @@ def lambda_handler(event, context):
         "stop_reason": bedrock_response.get("stopReason"),
         "usage": bedrock_response.get("usage", {}),
         "bedrock_request_id": ((bedrock_response.get("ResponseMetadata") or {}).get("RequestId")),
+        "retry_count": retry_count,
         "request": request_meta,
     }
 

@@ -39,6 +39,16 @@ authorizer_cache_ttl_seconds           = 0
 api_key_rotation_days                  = 30
 api_key_secret_recovery_window_in_days = 7
 api_key_length                         = 48
+cors_allow_origins = [
+  "http://localhost:8080",
+  "http://127.0.0.1:8080",
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+]
 
 # VPC設定（開発環境ではVPC外で実行）
 enable_vpc             = false

@@ -4,12 +4,20 @@ API_KEY ?=
 PROMPT ?= 2 + 3
 STAGE_COUNT ?= 3
 STAGE_DURATION ?= 30s
+DEMO_APP_PORT ?= 8080
+
+DEMO_APP_DIR := $(CURDIR)/demo-app
+DEMO_APP_NGINX_DIR := $(DEMO_APP_DIR)/nginx
+DEMO_APP_NGINX_PREFIX := $(DEMO_APP_DIR)/.nginx
+DEMO_APP_NGINX_TEMPLATE := $(DEMO_APP_NGINX_DIR)/nginx.conf.template
+DEMO_APP_NGINX_CONF := $(DEMO_APP_NGINX_PREFIX)/nginx.conf
+DEMO_APP_NGINX_PID := $(DEMO_APP_NGINX_PREFIX)/nginx.pid
 
 TFVARS_dev := dev.tfvars
 TFVARS_prod := prod.tfvars
 TFVARS := $(TFVARS_$(ENV))
 
-.PHONY: check-env help init fmt validate plan apply destroy output get-api-key rotate-secret test load-test
+.PHONY: check-env help init fmt validate plan apply destroy output get-api-key rotate-secret test load-test demo-app-up demo-app-down
 
 check-env:
 	@if [ -z "$(TFVARS)" ]; then \
@@ -32,6 +40,8 @@ help:
 	@echo "  rotate-secret Trigger immediate API key rotation"
 	@echo "  test      Test deployed API Gateway endpoint"
 	@echo "  load-test Run k6 load test for GET/POST API Gateway endpoint and save logs"
+	@echo "  demo-app-up   Serve demo-app via local nginx on http://localhost:8080"
+	@echo "  demo-app-down Stop the local demo-app nginx process"
 	@echo ""
 	@echo "test options:"
 	@echo "  PROMPT=<text>         Prompt sent to Bedrock during POST test"
@@ -47,6 +57,7 @@ help:
 	@echo "  LOG_THROTTLED_RESPONSES=true            Sample a few 429 warnings in k6 output"
 	@echo "  API_URL=<url>         Override terraform output api_invoke_url"
 	@echo "  API_KEY=<key>         Override Secrets Manager lookup result"
+	@echo "  DEMO_APP_PORT=<port>  Local nginx port for demo-app (default: $(DEMO_APP_PORT))"
 
 init: check-env
 	terraform init
@@ -122,3 +133,34 @@ load-test: check-env
 	echo "Running load test with STAGE_COUNT=$(STAGE_COUNT), STAGE_DURATION=$(STAGE_DURATION)"; \
 	API_URL="$$API_URL_VALUE" API_KEY="$$API_KEY_VALUE" PROMPT="$(PROMPT)" STAGE_COUNT="$(STAGE_COUNT)" STAGE_DURATION="$(STAGE_DURATION)" THROTTLED_RATE_THRESHOLD="$(THROTTLED_RATE_THRESHOLD)" UNEXPECTED_FAILURE_RATE_THRESHOLD="$(UNEXPECTED_FAILURE_RATE_THRESHOLD)" LOG_THROTTLED_RESPONSES="$(LOG_THROTTLED_RESPONSES)" \
 	k6 run --summary-export "$$SUMMARY_JSON" ./k6_api_test.js 2>&1 | tee "$$STDOUT_LOG"
+
+demo-app-up:
+	@if ! command -v nginx >/dev/null 2>&1; then \
+		echo "nginx が見つかりません。macOS なら 'brew install nginx' を実行してください。"; \
+		exit 1; \
+	fi
+	@mkdir -p "$(DEMO_APP_NGINX_PREFIX)/logs"
+	@sed "s/__DEMO_APP_PORT__/$(DEMO_APP_PORT)/g" "$(DEMO_APP_NGINX_TEMPLATE)" > "$(DEMO_APP_NGINX_CONF)"
+	@nginx -t -p "$(DEMO_APP_NGINX_PREFIX)" -c "$(DEMO_APP_NGINX_CONF)"
+	@if [ -f "$(DEMO_APP_NGINX_PID)" ] && kill -0 "$$(cat "$(DEMO_APP_NGINX_PID)")" 2>/dev/null; then \
+		echo "demo-app nginx は既に起動しています。設定を reload します。"; \
+		nginx -p "$(DEMO_APP_NGINX_PREFIX)" -c "$(DEMO_APP_NGINX_CONF)" -s reload; \
+	else \
+		echo "demo-app nginx を http://localhost:$(DEMO_APP_PORT) で起動します。"; \
+		nginx -p "$(DEMO_APP_NGINX_PREFIX)" -c "$(DEMO_APP_NGINX_CONF)"; \
+	fi
+
+demo-app-down:
+	@if ! command -v nginx >/dev/null 2>&1; then \
+		echo "nginx が見つかりません。"; \
+		exit 1; \
+	fi
+	@if [ -f "$(DEMO_APP_NGINX_TEMPLATE)" ]; then \
+		sed "s/__DEMO_APP_PORT__/$(DEMO_APP_PORT)/g" "$(DEMO_APP_NGINX_TEMPLATE)" > "$(DEMO_APP_NGINX_CONF)"; \
+	fi
+	@if [ -f "$(DEMO_APP_NGINX_PID)" ] && kill -0 "$$(cat "$(DEMO_APP_NGINX_PID)")" 2>/dev/null; then \
+		echo "demo-app nginx を停止します。"; \
+		nginx -p "$(DEMO_APP_NGINX_PREFIX)" -c "$(DEMO_APP_NGINX_CONF)" -s stop; \
+	else \
+		echo "demo-app nginx は起動していません。"; \
+	fi
