@@ -17,9 +17,9 @@ runtime = "python3.12"
 # ハンドラー関数
 handler = "lambda_function.lambda_handler"
 
-# リソース設定（本番環境はパフォーマンスと信頼性を重視）
-memory_size = 512 # MB（開発環境より高い値を設定）
-timeout     = 30  # 秒（余裕を持ったタイムアウト）
+# リソース設定（本番環境は Bedrock 推論に十分な余裕を持たせる）
+memory_size = 1024 # MB
+timeout     = 30   # 秒
 
 # ログ保持期間（本番環境は長期保存）
 log_retention_days = 90 # 90日間（コンプライアンス要件に応じて調整）
@@ -30,6 +30,15 @@ environment_variables = {
   DEBUG_MODE  = "false" # デバッグモードを無効化
   API_TIMEOUT = "10"    # API タイムアウト（秒）
 }
+
+# Bedrock / API key 設定
+bedrock_model_id                       = "amazon.nova-lite-v1:0"
+bedrock_max_tokens                     = 512
+bedrock_temperature                    = 0.3
+authorizer_cache_ttl_seconds           = 0
+api_key_rotation_days                  = 30
+api_key_secret_recovery_window_in_days = 7
+api_key_length                         = 48
 
 # VPC設定（本番環境でプライベートリソースにアクセスする場合）
 # 以下は例です。実際の環境に合わせて変更してください

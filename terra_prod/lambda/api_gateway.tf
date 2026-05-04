@@ -45,7 +45,7 @@ resource "aws_apigatewayv2_api" "lambda_http_api" {
   cors_configuration {
     # ブラウザが実リクエストで送信してよいヘッダ。
     # 例: Content-Type: application/json を送る場合は content-type が必要。
-    allow_headers = ["content-type", "x-requested-with"]
+    allow_headers = ["content-type", "x-api-key", "x-requested-with"]
 
     # クロスオリジンで許可する HTTP メソッド。
     # OPTIONS を含めることで preflight を許可する。
@@ -60,7 +60,7 @@ resource "aws_apigatewayv2_api" "lambda_http_api" {
 
     # ブラウザが preflight 結果をキャッシュしてよい秒数。
     # 300 秒の間は毎回 OPTIONS を打たずに済む場合がある。
-    max_age       = 300
+    max_age = 300
   }
 
   tags = merge(
@@ -77,14 +77,14 @@ resource "aws_apigatewayv2_integration" "lambda_proxy" {
   # AWS_PROXY は、API Gateway が受けたリクエストをほぼそのまま Lambda に渡す方式。
   # Lambda 側で event を見れば、HTTP メソッド、ヘッダ、body などを取得できる。
   # 非プロキシ統合よりシンプルで、Lambda をバックエンドにする場合の定番構成。
-  integration_type       = "AWS_PROXY"
+  integration_type = "AWS_PROXY"
 
   # API Gateway から Lambda Invoke API を呼ぶ際のメソッド。
   # クライアントが GET/POST で来ても、Lambda 呼び出し自体は AWS API 的には POST。
-  integration_method     = "POST"
+  integration_method = "POST"
 
   # どの Lambda に転送するかを示す ARN。
-  integration_uri        = aws_lambda_function.main.invoke_arn
+  integration_uri = aws_lambda_function.main.invoke_arn
 
   # Lambda proxy integration で Lambda に渡されるイベント形式のバージョン。
   # 2.0 は HTTP API でよく使う新しい形式。
@@ -94,32 +94,50 @@ resource "aws_apigatewayv2_integration" "lambda_proxy" {
 
   # API Gateway がバックエンド応答を待つ最大時間(ms)。
   # HTTP API の上限 30 秒に合わせて、Lambda timeout が長くても 30 秒で打ち止め。
-  timeout_milliseconds   = min(var.timeout * 1000, 30000)
+  timeout_milliseconds = min(var.timeout * 1000, 30000)
+}
+
+resource "aws_apigatewayv2_authorizer" "api_key" {
+  api_id = aws_apigatewayv2_api.lambda_http_api.id
+
+  name                              = "${var.environment}-${var.function_name}-api-key-authorizer"
+  authorizer_type                   = "REQUEST"
+  authorizer_uri                    = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/${aws_lambda_function.authorizer.arn}/invocations"
+  authorizer_payload_format_version = "2.0"
+  enable_simple_responses           = true
+  authorizer_result_ttl_in_seconds  = var.authorizer_cache_ttl_seconds
+  identity_sources                  = ["$request.header.x-api-key"]
 }
 
 resource "aws_apigatewayv2_route" "get_root" {
-  api_id    = aws_apigatewayv2_api.lambda_http_api.id
+  api_id = aws_apigatewayv2_api.lambda_http_api.id
 
   # route_key は「HTTPメソッド + パス」の組み合わせ。
   # GET / に対するリクエストが来たら、下の target へ流す。
   route_key = "GET /"
 
+  authorization_type = "CUSTOM"
+  authorizer_id      = aws_apigatewayv2_authorizer.api_key.id
+
   # この route がどの integration を呼ぶか指定する。
   # integrations/{id} という形式で関連づける。
-  target    = "integrations/${aws_apigatewayv2_integration.lambda_proxy.id}"
+  target = "integrations/${aws_apigatewayv2_integration.lambda_proxy.id}"
 }
 
 resource "aws_apigatewayv2_route" "post_root" {
-  api_id    = aws_apigatewayv2_api.lambda_http_api.id
+  api_id = aws_apigatewayv2_api.lambda_http_api.id
 
   # POST / のルーティング定義。
   # たとえば fetch(..., { method: 'POST' }) はこの route にマッチする。
   route_key = "POST /"
 
+  authorization_type = "CUSTOM"
+  authorizer_id      = aws_apigatewayv2_authorizer.api_key.id
+
   # GET / と同じ Lambda integration に流している。
   # Lambda 側では event.requestContext.http.method などを見て
   # GET と POST を分岐処理できる。
-  target    = "integrations/${aws_apigatewayv2_integration.lambda_proxy.id}"
+  target = "integrations/${aws_apigatewayv2_integration.lambda_proxy.id}"
 }
 
 # NOTE:
@@ -147,7 +165,7 @@ resource "aws_apigatewayv2_stage" "default" {
   # "stg-...-http-api" という別 API が作られ、その API の中に
   # やはり "$default" ステージが 1 つ存在する、という考え方になる。
   # 逆に 1 つの API の中へ dev/stg/prod の複数 stage を共存させる構成ではない。
-  name   = "$default"
+  name = "$default"
 
   # 変更時に自動デプロイ。
   # 学習・小規模構成では便利だが、厳密なリリース管理が必要なら明示デプロイも検討する。
@@ -159,10 +177,10 @@ resource "aws_apigatewayv2_stage" "default" {
     detailed_metrics_enabled = false
 
     # 短時間バーストの上限。
-    throttling_burst_limit   = var.api_throttling_burst_limit
+    throttling_burst_limit = var.api_throttling_burst_limit
 
     # 平均的なリクエストレート上限。
-    throttling_rate_limit    = var.api_throttling_rate_limit
+    throttling_rate_limit = var.api_throttling_rate_limit
   }
 
   access_log_settings {
@@ -209,9 +227,17 @@ resource "aws_lambda_permission" "allow_http_api" {
   function_name = aws_lambda_function.main.function_name
 
   # API Gateway サービスに許可を与える。
-  principal     = "apigateway.amazonaws.com"
+  principal = "apigateway.amazonaws.com"
 
   # この HTTP API からの実行に限定。
   # /*/* は「任意ステージ / 任意メソッド / 任意パス」に近い広めの許可。
-  source_arn    = "${aws_apigatewayv2_api.lambda_http_api.execution_arn}/*/*"
+  source_arn = "${aws_apigatewayv2_api.lambda_http_api.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "allow_http_api_authorizer" {
+  statement_id  = "AllowExecutionFromHttpApiAuthorizer"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.authorizer.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.lambda_http_api.execution_arn}/authorizers/${aws_apigatewayv2_authorizer.api_key.id}"
 }

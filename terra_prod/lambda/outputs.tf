@@ -37,6 +37,16 @@ output "api_invoke_url" {
   value       = aws_apigatewayv2_stage.default.invoke_url
 }
 
+output "authorizer_function_name" {
+  description = "API Gateway の x-api-key 検証を行う Lambda Authorizer 関数名"
+  value       = aws_lambda_function.authorizer.function_name
+}
+
+output "rotation_function_name" {
+  description = "Secrets Manager の API キー自動ローテーション Lambda 関数名"
+  value       = aws_lambda_function.rotation.function_name
+}
+
 output "function_version" {
   description = "Lambda関数の現在のバージョン"
   value       = aws_lambda_function.main.version
@@ -94,6 +104,16 @@ output "lambda_role_arn" {
 output "lambda_role_id" {
   description = "Lambda関数が使用するIAMロールのID"
   value       = aws_iam_role.lambda_role.id
+}
+
+output "authorizer_role_name" {
+  description = "Authorizer Lambda が使用する IAM ロール名"
+  value       = aws_iam_role.authorizer_role.name
+}
+
+output "rotation_role_name" {
+  description = "Rotation Lambda が使用する IAM ロール名"
+  value       = aws_iam_role.rotation_role.name
 }
 
 # =====================================
@@ -154,10 +174,21 @@ output "code_size" {
 output "environment_variables" {
   description = "Lambda関数に設定された環境変数（機密情報は除外）"
   value = {
-    ENVIRONMENT = try(aws_lambda_function.main.environment[0].variables["ENVIRONMENT"], "N/A")
-    APP_NAME    = try(aws_lambda_function.main.environment[0].variables["APP_NAME"], "N/A")
-    LOG_LEVEL   = try(aws_lambda_function.main.environment[0].variables["LOG_LEVEL"], "N/A")
+    ENVIRONMENT      = try(aws_lambda_function.main.environment[0].variables["ENVIRONMENT"], "N/A")
+    APP_NAME         = try(aws_lambda_function.main.environment[0].variables["APP_NAME"], "N/A")
+    LOG_LEVEL        = try(aws_lambda_function.main.environment[0].variables["LOG_LEVEL"], "N/A")
+    BEDROCK_MODEL_ID = try(aws_lambda_function.main.environment[0].variables["BEDROCK_MODEL_ID"], "N/A")
   }
+}
+
+output "api_key_secret_name" {
+  description = "API キーを保存する Secrets Manager シークレット名"
+  value       = aws_secretsmanager_secret.api_key.name
+}
+
+output "api_key_secret_arn" {
+  description = "API キーを保存する Secrets Manager シークレット ARN"
+  value       = aws_secretsmanager_secret.api_key.arn
 }
 
 # =====================================
@@ -167,10 +198,10 @@ output "environment_variables" {
 output "test_invoke_command" {
   description = "Lambda関数をテストするためのAWS CLIコマンド"
   value       = <<-EOT
-    # シンプルなテスト実行
+    # Bedrock 呼び出しを直接 Lambda invoke でテスト
     aws lambda invoke \
       --function-name ${aws_lambda_function.main.function_name} \
-      --payload '{"name":"World","message":"Hello"}' \
+      --payload '{"prompt":"AWS Lambda を一文で説明してください"}' \
       --region ${var.aws_region} \
       response.json
     
@@ -192,15 +223,46 @@ output "get_logs_command" {
 output "test_api_command" {
   description = "API Gateway経由でLambda関数をテストするcurlコマンド"
   value       = <<-EOT
-    # POSTでJSONボディを送信
+    # まず API キーを取得
+    API_KEY=$(aws secretsmanager get-secret-value \
+      --secret-id ${aws_secretsmanager_secret.api_key.name} \
+      --region ${var.aws_region} \
+      --query SecretString \
+      --output text | jq -r '.api_key // .')
+
+    # 認証済み GET ヘルスチェック
+    curl -sS \
+      -H "x-api-key: $$API_KEY" \
+      ${aws_apigatewayv2_stage.default.invoke_url} | jq .
+
+    # 認証済み POST で Bedrock を呼び出す
     curl -sS \
       -X POST \
       -H 'Content-Type: application/json' \
-      -d '{"name":"World","message":"Hello from API Gateway"}' \
+      -H "x-api-key: $$API_KEY" \
+      -d '{"prompt":"AWS Lambda を一文で説明してください"}' \
       ${aws_apigatewayv2_stage.default.invoke_url} | jq .
+  EOT
+}
 
-    # GETでクエリ文字列を送信
-    curl -sS '${aws_apigatewayv2_stage.default.invoke_url}?name=World&message=Hello%20from%20query' | jq .
+output "get_api_key_command" {
+  description = "Secrets Manager から API キーを取得する AWS CLI コマンド"
+  value       = <<-EOT
+    aws secretsmanager get-secret-value \
+      --secret-id ${aws_secretsmanager_secret.api_key.name} \
+      --region ${var.aws_region} \
+      --query SecretString \
+      --output text | jq -r '.api_key // .'
+  EOT
+}
+
+output "rotate_api_key_command" {
+  description = "API キーを即時ローテーションする AWS CLI コマンド"
+  value       = <<-EOT
+    aws secretsmanager rotate-secret \
+      --secret-id ${aws_secretsmanager_secret.api_key.name} \
+      --region ${var.aws_region} \
+      --rotate-immediately
   EOT
 }
 
@@ -211,16 +273,21 @@ output "test_api_command" {
 output "deployment_summary" {
   description = "デプロイメントの概要情報"
   value = {
-    function_name   = aws_lambda_function.main.function_name
-    api_invoke_url  = aws_apigatewayv2_stage.default.invoke_url
-    runtime         = aws_lambda_function.main.runtime
-    memory_size_mb  = aws_lambda_function.main.memory_size
-    timeout_seconds = aws_lambda_function.main.timeout
-    environment     = var.environment
-    region          = var.aws_region
-    vpc_enabled     = var.enable_vpc
-    tracing_mode    = var.tracing_mode
-    log_retention   = var.log_retention_days
+    function_name         = aws_lambda_function.main.function_name
+    api_invoke_url        = aws_apigatewayv2_stage.default.invoke_url
+    runtime               = aws_lambda_function.main.runtime
+    memory_size_mb        = aws_lambda_function.main.memory_size
+    timeout_seconds       = aws_lambda_function.main.timeout
+    environment           = var.environment
+    region                = var.aws_region
+    vpc_enabled           = var.enable_vpc
+    tracing_mode          = var.tracing_mode
+    log_retention         = var.log_retention_days
+    bedrock_model_id      = var.bedrock_model_id
+    api_key_secret_name   = aws_secretsmanager_secret.api_key.name
+    api_key_rotation_days = var.api_key_rotation_days
+    authorizer_function   = aws_lambda_function.authorizer.function_name
+    rotation_function     = aws_lambda_function.rotation.function_name
   }
 }
 

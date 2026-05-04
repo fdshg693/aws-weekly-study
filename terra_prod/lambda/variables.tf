@@ -331,3 +331,79 @@ variable "api_throttling_rate_limit" {
     error_message = "api_throttling_rate_limit は0より大きい必要があります"
   }
 }
+
+# =====================================
+# Bedrock / API key 認証設定
+# =====================================
+
+variable "bedrock_model_id" {
+  description = "Lambda が呼び出す Amazon Bedrock モデル ID。例: amazon.nova-lite-v1:0"
+  type        = string
+  default     = "amazon.nova-lite-v1:0"
+}
+
+variable "bedrock_max_tokens" {
+  description = "Bedrock Converse API の最大生成トークン数"
+  type        = number
+  default     = 256
+
+  validation {
+    condition     = var.bedrock_max_tokens > 0
+    error_message = "bedrock_max_tokens は1以上である必要があります"
+  }
+}
+
+variable "bedrock_temperature" {
+  description = "Bedrock Converse API の temperature"
+  type        = number
+  default     = 0.5
+
+  validation {
+    condition     = var.bedrock_temperature >= 0 && var.bedrock_temperature <= 1
+    error_message = "bedrock_temperature は0〜1の範囲である必要があります"
+  }
+}
+
+variable "authorizer_cache_ttl_seconds" {
+  description = "API Gateway Lambda Authorizer の結果キャッシュ秒数。ローテーション追従性を優先するなら 0 を推奨"
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.authorizer_cache_ttl_seconds >= 0 && var.authorizer_cache_ttl_seconds <= 3600
+    error_message = "authorizer_cache_ttl_seconds は0〜3600の範囲である必要があります"
+  }
+}
+
+variable "api_key_rotation_days" {
+  description = "Secrets Manager による API キーの自動ローテーション間隔（日数）"
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.api_key_rotation_days >= 1
+    error_message = "api_key_rotation_days は1以上である必要があります"
+  }
+}
+
+variable "api_key_secret_recovery_window_in_days" {
+  description = "API キー secret の削除猶予日数"
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.api_key_secret_recovery_window_in_days >= 0 && var.api_key_secret_recovery_window_in_days <= 30
+    error_message = "api_key_secret_recovery_window_in_days は0〜30の範囲である必要があります"
+  }
+}
+
+variable "api_key_length" {
+  description = "ローテーション Lambda が生成する API キーの文字数"
+  type        = number
+  default     = 48
+
+  validation {
+    condition     = var.api_key_length >= 24 && var.api_key_length <= 128
+    error_message = "api_key_length は24〜128の範囲である必要があります"
+  }
+}

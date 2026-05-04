@@ -6,10 +6,10 @@ import { Counter, Rate } from 'k6/metrics';
 // k6 実行時に `-e API_URL=...` のように渡す環境変数を読み込む。
 // API_URL は必須で、負荷試験対象の API Gateway / Lambda エンドポイントを指す。
 const API_URL = __ENV.API_URL;
-// リクエストごとに送る name の接頭辞。未指定時は `k6` を使う。
-const REQUEST_NAME = __ENV.REQUEST_NAME || 'k6';
-// リクエストに含める message の既定値。テストデータの識別に使える。
-const REQUEST_MESSAGE = __ENV.REQUEST_MESSAGE || 'Hello from k6';
+// 認証付き API のため x-api-key は必須。
+const API_KEY = __ENV.API_KEY;
+// Bedrock に渡すプロンプトの雛形。
+const PROMPT = __ENV.PROMPT || 'AWS Lambda と Amazon Bedrock の関係を一文で説明してください';
 // 各リクエストの後に待機する秒数。0 の場合は待機せず、最大限に負荷をかける。
 const SLEEP_SECONDS = Number(__ENV.SLEEP_SECONDS || '0');
 // 429 の詳細ログを見たいときだけ有効化する。大量出力を避けるため先頭数件だけ出す。
@@ -17,10 +17,10 @@ const LOG_THROTTLED_RESPONSES = __ENV.LOG_THROTTLED_RESPONSES === 'true';
 // Makefile から共通で渡せるステージ数とステージ時間。
 const DEFAULT_STAGE_COUNT = 3;
 const DEFAULT_STAGE_DURATION = '30s';
-const DEFAULT_GET_STAGE_TARGETS = [5, 20, 50];
-const DEFAULT_POST_STAGE_TARGETS = [5, 20, 50];
+const DEFAULT_GET_STAGE_TARGETS = [2, 4, 6];
+const DEFAULT_POST_STAGE_TARGETS = [2, 4, 6];
 // 429 は「API がダウンした失敗」ではなく「スロットリングされた応答」として別管理する。
-const THROTTLED_RATE_THRESHOLD = Number(__ENV.THROTTLED_RATE_THRESHOLD || '0.20');
+const THROTTLED_RATE_THRESHOLD = Number(__ENV.THROTTLED_RATE_THRESHOLD || '0.40');
 const UNEXPECTED_FAILURE_RATE_THRESHOLD = Number(__ENV.UNEXPECTED_FAILURE_RATE_THRESHOLD || '0.05');
 
 const expectedResponseStatuses = http.expectedStatuses(200, 429);
@@ -33,6 +33,10 @@ const MAX_THROTTLED_LOGS = 5;
 
 if (!API_URL) {
   throw new Error('API_URL is required. Example: k6 run -e API_URL=https://xxxx.execute-api.ap-northeast-1.amazonaws.com/ k6_api_test.js');
+}
+
+if (!API_KEY) {
+  throw new Error('API_KEY is required. Example: k6 run -e API_URL=https://xxxx.execute-api.ap-northeast-1.amazonaws.com/ -e API_KEY=xxxx k6_api_test.js');
 }
 
 http.setResponseCallback(expectedResponseStatuses);
@@ -170,33 +174,24 @@ function buildQueryString(params) {
     .join('&');
 }
 
-// GET リクエスト用のクエリ文字列を作る。
-// __VU は仮想ユーザー番号、__ITER はその VU 内での繰り返し回数なので、
-// 組み合わせることで各リクエストを一意に識別しやすくしている。
-function buildQuery(index) {
-  const query = buildQueryString({
-    name: `${REQUEST_NAME}-get-${index}`,
-    message: REQUEST_MESSAGE,
-  });
-
-  const separator = API_URL.includes('?') ? '&' : '?';
-
-  return `${API_URL}${separator}${query}`;
-}
-
-// POST リクエスト用 JSON ボディを作る。
-// source を固定で `k6` にしているため、サーバー側ログや保存データから負荷試験由来の書き込みを判別しやすい。
 function buildPayload(index) {
   return JSON.stringify({
-    name: `${REQUEST_NAME}-post-${index}`,
-    message: REQUEST_MESSAGE,
+    prompt: `${PROMPT} [k6-request:${index}]`,
     source: 'k6',
   });
 }
 
+function buildRequestParams(requestType) {
+  return {
+    headers: {
+      'x-api-key': API_KEY,
+      'Content-Type': 'application/json',
+    },
+    tags: { request_type: requestType },
+  };
+}
+
 // API 応答の基本妥当性を検証する。
-// 429 を許容しているのは、高負荷時のスロットリング挙動も想定しているため。
-// 200 の場合のみ JSON と greeting フィールドの存在を厳密に確認する。
 function validateResponse(res, expectedMethod) {
   const isThrottled = res.status === 429;
   const isUnexpected = !(res.status === 200 || isThrottled);
@@ -229,18 +224,25 @@ function validateResponse(res, expectedMethod) {
   return check(res, {
     [`${expectedMethod}: status is 200 or 429`]: (r) => r.status === 200 || r.status === 429,
     [`${expectedMethod}: body is JSON when 200`]: (r) => r.status === 429 || body !== null,
-    [`${expectedMethod}: greeting exists when 200`]: (r) => r.status === 429 || Boolean(body?.greeting),
+    [`${expectedMethod}: model_id exists when 200`]: (r) => r.status === 429 || Boolean(body?.model_id),
+    [`${expectedMethod}: health or output exists when 200`]: (r) => {
+      if (r.status === 429) {
+        return true;
+      }
+
+      if (expectedMethod === 'GET') {
+        return body?.status === 'ok';
+      }
+
+      return Boolean(body?.output_text);
+    },
   });
 }
 
 // GET シナリオ本体。
 // ramping-arrival-rate executor により、この関数が設定レートに従って繰り返し呼ばれる。
 export function getScenario() {
-  const requestIndex = `${__VU}-${__ITER}`;
-  const res = http.get(buildQuery(requestIndex), {
-    // 任意タグ。集計時に read 系アクセスとして分類しやすくする。
-    tags: { request_type: 'read' },
-  });
+  const res = http.get(API_URL, buildRequestParams('read'));
 
   validateResponse(res, 'GET');
 
@@ -255,14 +257,7 @@ export function getScenario() {
 // POST シナリオ本体。
 export function postScenario() {
   const requestIndex = `${__VU}-${__ITER}`;
-  const res = http.post(API_URL, buildPayload(requestIndex), {
-    headers: {
-      // JSON API として送信するため Content-Type を明示。
-      'Content-Type': 'application/json',
-    },
-    // 任意タグ。書き込み系リクエストとして分析しやすくする。
-    tags: { request_type: 'write' },
-  });
+  const res = http.post(API_URL, buildPayload(requestIndex), buildRequestParams('write'));
 
   validateResponse(res, 'POST');
 

@@ -1,97 +1,225 @@
-# Lambda関数デプロイメント
+# Lambda + Bedrock + API Key Rotation
 
 ## 概要
-PythonスクリプトをAWS Lambda関数にデプロイするためのTerraform構成です。開発から本番環境まで対応できる実践的な設定を提供します。
+`terra_prod/lambda` は、**API Gateway HTTP API → Lambda → Amazon Bedrock** の流れを Terraform で構築する独立プロジェクトです。
 
-### 技術スタック
+この構成では、単なる公開 Lambda ではなく、以下をまとめて提供します。
+
+- **Amazon Bedrock を呼び出す API Lambda**
+- **`x-api-key` を検証する Lambda Authorizer**
+- **Secrets Manager に保存した API キーの自動ローテーション**
+- **AWS CLI / Terraform output から API キー情報を追いやすい運用導線**
+
+## 技術スタック
 - AWS Lambda（Python 3.12）
-- Amazon API Gateway（HTTP API）
-
+- Amazon API Gateway HTTP API
+- Amazon Bedrock Runtime
+- AWS Secrets Manager
+- Lambda Authorizer
+- Secrets Manager Rotation Lambda
 - Terraform
-- IAM Role & Policy
+- IAM Role / Policy
 - CloudWatch Logs
 - X-Ray（オプション）
 
-### 作成物
-イベント駆動型のサーバーレス関数です。入力されたイベントデータを処理し、レスポンスを返します。開発環境では最小限のリソース（128MB、3秒）で動作し、本番環境では十分なリソース（512MB、30秒）とX-Rayトレーシングによる監視を備えています。
+## このプロジェクトで作るもの
+- `GET /` : 認証済みヘルスチェック
+- `POST /` : 認証済み Bedrock 呼び出し API
+- `src/lambda_function.py` : Bedrock 本体呼び出し
+- `src/authorizer.py` : `x-api-key` 検証
+- `src/rotation_lambda.py` : API キー自動ローテーション
+
+## アーキテクチャ
+
+```text
+Client
+  -> HTTPS + x-api-key
+API Gateway HTTP API
+  -> Lambda Authorizer (x-api-key validation)
+Application Lambda
+  -> Amazon Bedrock Runtime
+
+Secrets Manager
+  -> stores shared API key
+  -> invokes Rotation Lambda automatically
+```
+
+## 設計上のポイント
+- **Lambda 本体の前段で遮断**: API Gateway Lambda Authorizer が `x-api-key` を検証するため、認証失敗時は本体 Lambda に到達しません。
+- **API キーは Secrets Manager 管理**: API キーの参照先は Secrets Manager です。
+- **自動ローテーション**: `aws_secretsmanager_secret_rotation` により、定期的にキーを更新できます。
+- **運用しやすさ重視**: `terraform output -raw api_key_secret_name` や `make get-api-key` でローカルから取得しやすくしています。
+- **Bedrock モデルは変数化**: `bedrock_model_id` を tfvars で切り替え可能です。
+- **Authorizer キャッシュをデフォルト無効**: ローテーション後に古いキーを引きずりにくくしています。
 
 ## 構成ファイル
-- `lambda.tf` - Lambda関数のリソース定義
-- `api_gateway.tf` - API Gateway HTTP APIとLambda統合の定義
-- `iam.tf` - Lambda実行ロールと権限ポリシー
-- `variables.tf` - 変数定義（詳細なコメント付き）
-- `outputs.tf` - デプロイ後の出力値
-- `dev.tfvars` / `prod.tfvars` - 環境別設定ファイル
-- `Makefile` - Terraform操作とAPIテストのショートカット
-- `src/lambda_function.py` - Lambda関数のPythonコード
-- `test_api.sh` - API Gateway経由の疎通テストスクリプト
-- `k6_api_test.js` - k6 を使った GET/POST の負荷試験スクリプト
+- `lambda.tf` - Lambda / Secrets Manager / Rotation 定義
+- `api_gateway.tf` - HTTP API / Integration / Authorizer / Route
+- `iam.tf` - Application / Authorizer / Rotation の IAM 権限
+- `variables.tf` - Bedrock / API key rotation を含む変数定義
+- `outputs.tf` - API URL、シークレット名、CLI コマンド例
+- `dev.tfvars` / `prod.tfvars` - 環境別設定
+- `Makefile` - Terraform / API key / テスト / k6 実行
+- `src/lambda_function.py` - Bedrock 呼び出し本体
+- `src/authorizer.py` - `x-api-key` 検証
+- `src/rotation_lambda.py` - API キーローテーション
+- `test_api.sh` - 認証失敗 / 成功系の疎通確認
+- `k6_api_test.js` - 認証付き GET / POST の負荷試験
 
-## コードの特徴
-- **自動デプロイメカニズム**: `archive_file`データソースを使用してソースコードの変更を自動検知し、`terraform apply`で自動更新します。
-- **HTTP API公開**: Amazon API Gateway HTTP APIを追加し、`GET /` と `POST /` の両方でLambda関数を呼び出せます。
-- **IAM権限の最小化**: 最小権限の原則に基づき、CloudWatch Logsへの書き込み権限のみをデフォルトで設定。追加権限は`iam.tf`で明示的に定義します。
-- **環境別の最適化**: 開発環境では低コストで迅速なイテレーション、本番環境では高パフォーマンスと安定性を重視した設定を実現しています。
-- **拡張可能な設計**: `variables.tf`にVPC統合、DLQ、Lambda Layers、予約済み同時実行数など、様々なオプション機能の例とコメントを記載しており、必要に応じて簡単に有効化できます。
+## 前提条件
+- Terraform `>= 1.0`
+- AWS CLI（認証済み）
+- `jq`
+- `curl`
+- k6（負荷試験を行う場合）
+- 対象 AWS アカウントで **Bedrock の利用権限とモデルアクセスが有効** であること
 
-## 使い方
+## よく使う操作
 
-### デプロイ
-- 開発環境: `make apply ENV=dev`
-- 本番環境: `make apply ENV=prod`
+### 初期化
+```bash
+make init
+```
+
+### フォーマット / 検証
+```bash
+make fmt
+make validate ENV=dev
+```
+
+### plan / apply
+```bash
+make plan ENV=dev
+make apply ENV=dev
+
+make plan ENV=prod
+make apply ENV=prod
+```
 
 ### 出力確認
-- `make output`
-- `terraform output -raw api_invoke_url`
-
-### API テスト
-- `make test ENV=dev`
-- 必要に応じて `REQUEST_NAME`, `REQUEST_MESSAGE`, `API_URL` を環境変数で上書き可能です。
-
-### 負荷テスト（k6）
-- `make load-test ENV=prod`
-- 必要に応じて `API_URL`, `REQUEST_NAME`, `REQUEST_MESSAGE`, `STAGE_COUNT`, `STAGE_DURATION` を指定できます
-- k6 が未インストールなら `brew install k6` で導入できます
-- 実行結果は `logs/` 配下にタイムスタンプ付きで保存されます
-  - 標準出力ログ: `logs/k6-load-test-YYYYMMDD-HHMMSS.log`
-  - サマリーJSON: `logs/k6-load-test-YYYYMMDD-HHMMSS-summary.json`
-
-例:
 ```bash
-make load-test ENV=prod
+make output
+terraform output -raw api_invoke_url
+terraform output -raw api_key_secret_name
+```
 
+## API キー取得
+
+### Makefile から取得
+```bash
+make get-api-key ENV=dev
+```
+
+### AWS CLI から取得
+```bash
+SECRET_NAME=$(terraform output -raw api_key_secret_name)
+
+aws secretsmanager get-secret-value \
+  --secret-id "$SECRET_NAME" \
+  --query SecretString \
+  --output text | jq -r '.api_key // .'
+```
+
+## API キーを手動ローテーション
+
+### Makefile から即時ローテーション
+```bash
+make rotate-secret ENV=dev
+```
+
+### AWS CLI から即時ローテーション
+```bash
+SECRET_NAME=$(terraform output -raw api_key_secret_name)
+
+aws secretsmanager rotate-secret \
+  --secret-id "$SECRET_NAME" \
+  --rotate-immediately
+```
+
+## API テスト
+
+`test_api.sh` は次をまとめて確認します。
+
+1. 認証なしリクエストが拒否される
+2. 不正 API キーが拒否される
+3. 正しい API キーで `GET /` が成功する
+4. 正しい API キーで `POST /` が Bedrock を呼び出す
+
+### 基本実行
+```bash
+make test ENV=dev
+```
+
+### プロンプトを指定して実行
+```bash
+PROMPT="AWS Lambda を初心者向けに説明してください" make test ENV=dev
+```
+
+### API キーや URL を明示して実行
+```bash
 API_URL="https://xxxx.execute-api.ap-northeast-1.amazonaws.com/" \
-REQUEST_NAME="benchmark" \
-REQUEST_MESSAGE="Hello from load test" \
-make load-test ENV=prod
+API_KEY="your-api-key" \
+PROMPT="Bedrock とは何ですか？" \
+make test ENV=dev
+```
 
+## 負荷試験（k6）
+
+`k6_api_test.js` は、認証付き `GET /` と `POST /` を別シナリオで同時実行し、以下を確認しやすくしています。
+
+- API Gateway のスロットリングによる `429` の発生有無
+- 認証付き API の `http_req_duration` p95
+- GET ヘルスチェックの成功率
+- POST Bedrock 呼び出しの成功率
+
+> 注意: POST は Bedrock 呼び出しを伴うため、**料金が発生**します。まずは低いレートから試してください。
+
+### 基本実行
+```bash
+make load-test ENV=dev
+```
+
+### 軽めの確認
+```bash
 STAGE_COUNT=1 \
 STAGE_DURATION=10s \
+make load-test ENV=dev
+```
+
+### プロンプトと API 情報を明示
+```bash
+API_URL="https://xxxx.execute-api.ap-northeast-1.amazonaws.com/" \
+API_KEY="your-api-key" \
+PROMPT="Amazon Bedrock を一文で説明してください" \
 make load-test ENV=prod
 ```
 
-テスト実行後は `logs/` フォルダを見れば、あとから結果を見返せます。
-
-`STAGE_COUNT` はステージ数、`STAGE_DURATION` は各ステージの継続時間です。たとえばデフォルトは「3ステージ × 30秒」ですが、軽い確認なら「1ステージ × 10秒」のように短くできます。
-
-`k6_api_test.js` は GET / POST を別シナリオで同時に実行し、以下を確認しやすくしています。
-- API Gateway のスロットリングによる `429` の発生有無
-- `http_req_duration` の p95 など、応答速度の悪化ポイント
-- GET / POST それぞれの成功率
-
-さらに細かくレートを調整したい場合は、環境変数で変更できます。
-
-例:
+### さらに細かく調整
 ```bash
 API_URL="https://xxxx.execute-api.ap-northeast-1.amazonaws.com/" \
-GET_STAGE1_TARGET=10 GET_STAGE2_TARGET=30 GET_STAGE3_TARGET=60 \
-POST_STAGE1_TARGET=5 POST_STAGE2_TARGET=15 POST_STAGE3_TARGET=30 \
+API_KEY="your-api-key" \
+GET_STAGE1_TARGET=5 GET_STAGE2_TARGET=10 GET_STAGE3_TARGET=20 \
+POST_STAGE1_TARGET=1 POST_STAGE2_TARGET=2 POST_STAGE3_TARGET=4 \
 k6 run ./k6_api_test.js
 ```
 
+実行結果は `logs/` 配下に保存されます。
+
+- 標準出力ログ: `logs/k6-load-test-YYYYMMDD-HHMMSS.log`
+- サマリーJSON: `logs/k6-load-test-YYYYMMDD-HHMMSS-summary.json`
+
+## 主要変数
+- `bedrock_model_id` - 呼び出す Bedrock モデル ID
+- `bedrock_max_tokens` - 最大生成トークン数
+- `bedrock_temperature` - temperature
+- `authorizer_cache_ttl_seconds` - Authorizer 結果キャッシュ秒数
+- `api_key_rotation_days` - 自動ローテーション間隔
+- `api_key_length` - 生成 API キー長
+
 ## 注意事項
-- Lambda関数のコードを変更した場合、必ず`terraform apply`を実行してデプロイしてください
-- API GatewayのURLは `terraform output -raw api_invoke_url` で確認できます
-- IAM権限を追加する場合は、`iam.tf`のカスタムポリシーセクションを編集してください
-- VPC内でLambda関数を実行する場合、NAT Gatewayが必要です（インターネットアクセスのため）
-- CloudWatch Logsのログ保持期間を長く設定すると、コストが増加する可能性があります
+- Lambda コードを変更したら `terraform apply` を実行してください
+- Bedrock の利用可否は **リージョン / モデルアクセス設定** に依存します
+- API Gateway URL は `terraform output -raw api_invoke_url` で確認できます
+- API キーの取得元は Secrets Manager です
+- ローテーション直後は、取得済みの古い API キーでは認証に失敗します
+- Bedrock POST を伴う負荷試験はコストに注意してください

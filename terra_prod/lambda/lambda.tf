@@ -2,21 +2,11 @@
 # Lambda関数のソースコードアーカイブ
 # =====================================
 
-# Lambda関数のソースコードをZIPファイルにアーカイブ
-# Terraformはソースコードの変更を自動的に検出し、必要に応じて再デプロイする
 data "archive_file" "lambda_zip" {
-  # アーカイブタイプ（ZIP形式）
-  type = "zip"
-
-  # アーカイブ元のディレクトリパス
-  source_dir = "${path.module}/src"
-
-  # 出力先のZIPファイルパス
-  # ${path.module} は現在のTerraformモジュールのディレクトリパスを指す
+  type        = "zip"
+  source_dir  = "${path.module}/src"
   output_path = "${path.module}/lambda_function.zip"
 
-  # ファイル権限の除外
-  # これにより、ファイルのパーミッション変更による不要な再デプロイを防ぐ
   excludes = [
     "__pycache__",
     "*.pyc",
@@ -28,159 +18,219 @@ data "archive_file" "lambda_zip" {
 }
 
 # =====================================
-# Lambda関数の定義
+# Secrets Manager
+# =====================================
+
+resource "aws_secretsmanager_secret" "api_key" {
+  name                    = "${var.environment}/${var.function_name}/api-key"
+  description             = "Shared API key for ${var.environment}-${var.function_name} HTTP API"
+  recovery_window_in_days = var.api_key_secret_recovery_window_in_days
+
+  tags = merge(
+    {
+      Name = "${var.environment}-${var.function_name}-api-key"
+    },
+    var.tags
+  )
+}
+
+# =====================================
+# Lambda functions
 # =====================================
 
 resource "aws_lambda_function" "main" {
-  # Lambda関数の一意の名前。環境名をプレフィックスとして付与することで環境ごとに分離
   function_name = "${var.environment}-${var.function_name}"
+  description   = "Bedrock-backed API Lambda for ${var.environment} environment"
+  runtime       = var.runtime
+  handler       = var.handler
+  filename      = data.archive_file.lambda_zip.output_path
 
-  description = "Simple Lambda function deployed with Terraform in ${var.environment} environment"
-
-  # 実行ランタイム（Python, Node.js, Java等）
-  runtime = var.runtime
-
-  # 呼び出されるハンドラー関数。形式: <ファイル名>.<関数名>
-  handler = var.handler
-
-  # =====================================
-  # デプロイパッケージの設定
-  # =====================================
-
-  # デプロイパッケージのZIPファイル名
-  filename = data.archive_file.lambda_zip.output_path
-
-  # ZIPファイルのハッシュ値。ソースコードが変更された場合、この値も変更され、Lambda関数が更新される
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+  role             = aws_iam_role.lambda_role.arn
+  memory_size      = var.memory_size
+  timeout          = var.timeout
 
-  # 代替方法: S3からデプロイパッケージを取得
-  # s3_bucket = "my-lambda-deployment-bucket"
-  # s3_key    = "lambda-function-v1.0.0.zip"
-  # s3_object_version = "version-id" # バージョニング有効な場合
-
-  # =====================================
-  # 実行ロールの設定
-  # =====================================
-
-  # Lambda関数が使用するIAMロールのARN。このロールにより、Lambda関数が他のAWSサービスにアクセスできる
-  role = aws_iam_role.lambda_role.arn
-
-  # =====================================
-  # リソース設定
-  # =====================================
-
-  # メモリサイズ（MB）。メモリを増やすとCPUパフォーマンスも向上する
-  memory_size = var.memory_size
-
-  # タイムアウト時間（秒）
-  timeout = var.timeout
-
-  # ストレージサイズ（/tmpディレクトリ）
-  # 範囲: 512MB 〜 10,240MB
-  # 一時ファイルの保存に使用
   ephemeral_storage {
-    size = 512 # MB
+    size = 512
   }
 
-  # 予約済み同時実行数
-  # -1: 制限なし（デフォルト）
-  # 0以上: 指定された数まで同時実行を制限
   reserved_concurrent_executions = var.reserved_concurrent_executions
 
-  # Lambda関数内で使用する環境変数
   environment {
     variables = merge(
       {
-        # デフォルトの環境変数
-        ENVIRONMENT = var.environment
-        APP_NAME    = var.function_name
-        LOG_LEVEL   = var.environment == "production" ? "INFO" : "DEBUG"
+        ENVIRONMENT         = var.environment
+        APP_NAME            = var.function_name
+        LOG_LEVEL           = var.environment == "production" ? "INFO" : "DEBUG"
+        BEDROCK_MODEL_ID    = var.bedrock_model_id
+        BEDROCK_MAX_TOKENS  = tostring(var.bedrock_max_tokens)
+        BEDROCK_TEMPERATURE = tostring(var.bedrock_temperature)
       },
-      # ユーザー定義の環境変数をマージ
       var.environment_variables
     )
   }
 
-  # =====================================
-  # VPC設定（オプション）
-  # =====================================
-
-  # Lambda関数をVPC内で実行する場合の設定
-  # VPC内で実行すると、プライベートリソース（RDS等）にアクセス可能
   dynamic "vpc_config" {
     for_each = var.enable_vpc ? [1] : []
     content {
-      # Lambda関数を配置するサブネットID
-      # 複数のAZにまたがるサブネットを指定することを推奨
-      subnet_ids = var.vpc_subnet_ids
-
-      # セキュリティグループID
-      # Lambda関数のアウトバウンド・インバウンドトラフィックを制御
+      subnet_ids         = var.vpc_subnet_ids
       security_group_ids = var.vpc_security_group_ids
     }
   }
 
-  # =====================================
-  # デッドレターキュー（DLQ）の設定
-  # =====================================
-
-  # 非同期実行で失敗したイベントの送信先
   dynamic "dead_letter_config" {
     for_each = var.enable_dlq ? [1] : []
     content {
-      # SQSキューまたはSNSトピックのARN
       target_arn = var.dlq_target_arn
     }
   }
 
-  # AWS X-Rayによる分散トレーシング
   tracing_config {
-    mode = var.tracing_mode # "PassThrough" または "Active"
+    mode = var.tracing_mode
   }
 
-  # "x86_64" (デフォルト) または "arm64" (Graviton2)。arm64は一般的にコストパフォーマンスが高い
   architectures = ["x86_64"]
 
-  # default_tagsと合わせて使用される
   tags = merge(
     {
       Name    = "${var.environment}-${var.function_name}"
       Runtime = var.runtime
+      Role    = "application"
     },
     var.tags
   )
 
-  # =====================================
-  # 依存関係の設定
-  # =====================================
-
-  # CloudWatch Logsグループが先に作成されることを保証
-  # これにより、ログ保持期間の設定が確実に適用される
   depends_on = [
     aws_cloudwatch_log_group.lambda_log_group,
-    aws_iam_role_policy_attachment.lambda_logs
+    aws_iam_role_policy_attachment.lambda_logs,
+    aws_iam_role_policy.lambda_bedrock_access
   ]
 }
 
+resource "aws_lambda_function" "authorizer" {
+  function_name = "${var.environment}-${var.function_name}-authorizer"
+  description   = "Validates x-api-key for ${var.environment}-${var.function_name} HTTP API"
+  role          = aws_iam_role.authorizer_role.arn
+  runtime       = var.runtime
+  handler       = "authorizer.lambda_handler"
+  architectures = ["x86_64"]
+
+  filename         = data.archive_file.lambda_zip.output_path
+  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+
+  memory_size = 128
+  timeout     = 5
+
+  environment {
+    variables = {
+      API_KEY_SECRET_ARN = aws_secretsmanager_secret.api_key.arn
+      LOG_LEVEL          = var.environment == "production" ? "INFO" : "DEBUG"
+    }
+  }
+
+  tags = merge(
+    {
+      Name = "${var.environment}-${var.function_name}-authorizer"
+      Role = "authorizer"
+    },
+    var.tags
+  )
+
+  depends_on = [
+    aws_cloudwatch_log_group.authorizer_log_group,
+    aws_iam_role_policy_attachment.authorizer_logs,
+    aws_iam_role_policy.authorizer_secret_read
+  ]
+}
+
+resource "aws_lambda_function" "rotation" {
+  function_name = "${var.environment}-${var.function_name}-api-key-rotation"
+  description   = "Rotates shared API key secret for ${var.environment}-${var.function_name}"
+  role          = aws_iam_role.rotation_role.arn
+  runtime       = var.runtime
+  handler       = "rotation_lambda.lambda_handler"
+  architectures = ["x86_64"]
+
+  filename         = data.archive_file.lambda_zip.output_path
+  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+
+  memory_size = 128
+  timeout     = 30
+
+  environment {
+    variables = {
+      API_KEY_SECRET_ARN = aws_secretsmanager_secret.api_key.arn
+      API_KEY_LENGTH     = tostring(var.api_key_length)
+      LOG_LEVEL          = var.environment == "production" ? "INFO" : "DEBUG"
+    }
+  }
+
+  tags = merge(
+    {
+      Name = "${var.environment}-${var.function_name}-api-key-rotation"
+      Role = "rotation"
+    },
+    var.tags
+  )
+
+  depends_on = [
+    aws_cloudwatch_log_group.rotation_log_group,
+    aws_iam_role_policy_attachment.rotation_logs,
+    aws_iam_role_policy.rotation_secret_manage,
+    aws_secretsmanager_secret.api_key
+  ]
+}
+
+resource "aws_secretsmanager_secret_rotation" "api_key" {
+  secret_id           = aws_secretsmanager_secret.api_key.id
+  rotation_lambda_arn = aws_lambda_function.rotation.arn
+  rotate_immediately  = true
+
+  rotation_rules {
+    automatically_after_days = var.api_key_rotation_days
+  }
+
+  depends_on = [aws_lambda_permission.allow_secrets_manager_rotation]
+}
+
 # =====================================
-# CloudWatch Logsグループ
+# CloudWatch Logs groups
 # =====================================
 
-# Lambda関数のログを保存するCloudWatch Logsグループ
 resource "aws_cloudwatch_log_group" "lambda_log_group" {
-  # ログ群名（Lambda関数の命名規則に従う）
-  name = "/aws/lambda/${var.environment}-${var.function_name}"
-
-  # ログの保持期間（日数）
-  # コスト管理とコンプライアンス要件に応じて設定
+  name              = "/aws/lambda/${var.environment}-${var.function_name}"
   retention_in_days = var.log_retention_days
-
-  # ログの暗号化（オプション）
-  # KMSキーを使用してログを暗号化
-  # kms_key_id = aws_kms_key.lambda_logs.arn
 
   tags = {
     Name        = "${var.environment}-${var.function_name}-logs"
     Environment = var.environment
   }
+}
+
+resource "aws_cloudwatch_log_group" "authorizer_log_group" {
+  name              = "/aws/lambda/${var.environment}-${var.function_name}-authorizer"
+  retention_in_days = var.log_retention_days
+
+  tags = {
+    Name        = "${var.environment}-${var.function_name}-authorizer-logs"
+    Environment = var.environment
+  }
+}
+
+resource "aws_cloudwatch_log_group" "rotation_log_group" {
+  name              = "/aws/lambda/${var.environment}-${var.function_name}-api-key-rotation"
+  retention_in_days = var.log_retention_days
+
+  tags = {
+    Name        = "${var.environment}-${var.function_name}-rotation-logs"
+    Environment = var.environment
+  }
+}
+
+resource "aws_lambda_permission" "allow_secrets_manager_rotation" {
+  statement_id  = "AllowSecretsManagerRotation"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.rotation.function_name
+  principal     = "secretsmanager.amazonaws.com"
+  source_arn    = aws_secretsmanager_secret.api_key.arn
 }

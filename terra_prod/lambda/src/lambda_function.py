@@ -1,163 +1,166 @@
-"""
-シンプルなLambda関数のサンプル
-
-このLambda関数は以下の機能を持つ:
-1. イベントデータの受け取りと処理
-2. 環境変数の読み取り
-3. ログ出力
-4. JSON形式のレスポンス返却
-"""
+"""Bedrock-backed Lambda handler for API Gateway HTTP API."""
 
 import base64
 import json
-import os
-from datetime import datetime
 import logging
+import os
 import sys
+from datetime import datetime, timezone
 
-# シェルスクリプト側から呼び出すローカルテストにおいて、PRINTなどでSTDINが混じると、パースが失敗するため、
-# ログはstderrに出力するように設定する。
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+
+
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=os.environ.get("LOG_LEVEL", "INFO"),
     format='[%(levelname)s] %(message)s',
-    stream=sys.stderr  # ← これを追加
+    stream=sys.stderr,
 )
 
 logger = logging.getLogger(__name__)
+bedrock_runtime = boto3.client("bedrock-runtime")
+
+
+def _response(status_code, payload):
+    return {
+        "statusCode": status_code,
+        "headers": {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Content-Type,x-api-key",
+            "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
+        },
+        "body": json.dumps(payload, ensure_ascii=False),
+    }
 
 
 def _extract_request_payload(event):
-    """API Gateway / 直接Invoke の両方から入力データを取り出す。"""
     if not isinstance(event, dict):
         return {}, {}
 
     payload = {}
     request_meta = {
-        'source': 'direct-invoke',
-        'raw_path': event.get('rawPath'),
-        'request_context': event.get('requestContext', {})
+        "source": "direct-invoke",
+        "raw_path": event.get("rawPath"),
+        "request_context": event.get("requestContext", {}),
+        "method": ((event.get("requestContext") or {}).get("http") or {}).get("method", "GET"),
     }
 
-    query_params = event.get('queryStringParameters') or {}
+    query_params = event.get("queryStringParameters") or {}
     if isinstance(query_params, dict):
         payload.update(query_params)
 
-    body = event.get('body')
+    body = event.get("body")
     if body:
-        request_meta['source'] = 'api-gateway'
-        if event.get('isBase64Encoded'):
-            body = base64.b64decode(body).decode('utf-8')
+        request_meta["source"] = "api-gateway"
+        if event.get("isBase64Encoded"):
+            body = base64.b64decode(body).decode("utf-8")
 
         try:
             parsed_body = json.loads(body)
             if isinstance(parsed_body, dict):
                 payload.update(parsed_body)
             else:
-                payload['body'] = parsed_body
+                payload["body"] = parsed_body
         except json.JSONDecodeError:
-            payload['body'] = body
-    elif 'requestContext' in event:
-        request_meta['source'] = 'api-gateway'
-
-    direct_fields = {
-        key: value
-        for key, value in event.items()
-        if key not in {
-            'version',
-            'routeKey',
-            'rawPath',
-            'rawQueryString',
-            'headers',
-            'requestContext',
-            'body',
-            'isBase64Encoded',
-            'queryStringParameters'
-        }
-    }
-    payload.update(direct_fields)
+            payload["body"] = body
+    elif "requestContext" in event:
+        request_meta["source"] = "api-gateway"
 
     return payload, request_meta
 
 
-def lambda_handler(event, context):
-    """
-    Lambda関数のメインハンドラー
-    
-    Args:
-        event (dict): Lambda関数に渡されるイベントデータ
-            - API Gatewayからの場合: リクエスト情報を含む
-            - S3イベントからの場合: バケット・オブジェクト情報を含む
-            - 直接実行の場合: カスタムJSONデータ
-        
-        context (LambdaContext): Lambda実行コンテキスト
-            - function_name: 関数名
-            - function_version: バージョン
-            - invoked_function_arn: ARN
-            - memory_limit_in_mb: メモリ制限
-            - aws_request_id: リクエストID
-            - log_group_name: ログ群名
-            - log_stream_name: ログストリーム名
-    
-    Returns:
-        dict: レスポンスオブジェクト
-            - statusCode: HTTPステータスコード
-            - body: JSON文字列化されたレスポンスボディ
-    """
-    
-    # 環境変数の読み取り
-    # Terraformから設定される環境変数を取得
-    environment = os.environ.get('ENVIRONMENT', 'unknown')
-    app_name = os.environ.get('APP_NAME', 'lambda-function')
-    
-    # ログ出力（CloudWatch Logsに記録される）
-    logger.info(f"[INFO] Lambda function invoked in {environment} environment")
-    logger.info(f"[INFO] Application: {app_name}")
-    logger.info(f"[INFO] Request ID: {context.aws_request_id}")
-    logger.info(f"[INFO] Function Name: {context.function_name}")
-    logger.info(f"[INFO] Memory Limit: {context.memory_limit_in_mb} MB")
-    
-    # イベントの内容をログに出力（デバッグ用）
-    logger.info(f"[DEBUG] Received event: {json.dumps(event)}")
-    
-    # API Gatewayや直接Invokeから入力を抽出
-    request_payload, request_meta = _extract_request_payload(event)
+def _extract_text_from_converse_response(response):
+    content = (
+        response.get("output", {})
+        .get("message", {})
+        .get("content", [])
+    )
+    return "\n".join(
+        item.get("text", "")
+        for item in content
+        if isinstance(item, dict) and item.get("text")
+    ).strip()
 
-    # 現在時刻を取得
-    current_time = datetime.now().isoformat()
-    
-    # イベントからデータを抽出
-    # eventは辞書型なので、.get()を使って安全にアクセス
-    name = request_payload.get('name', 'World')
-    message = request_payload.get('message', 'Hello')
-    
-    # レスポンスデータの作成
-    response_data = {
-        'timestamp': current_time,
-        'environment': environment,
-        'app_name': app_name,
-        'request_id': context.aws_request_id,
-        'greeting': f"{message}, {name}!",
-        'input_event': request_payload,
-        'request': request_meta,
-        'function_info': {
-            'name': context.function_name,
-            'version': context.function_version,
-            'memory_mb': context.memory_limit_in_mb,
-            'remaining_time_ms': context.get_remaining_time_in_millis()
-        }
-    }
-    
-    logger.info(f"[INFO] Response prepared successfully")
-    
-    # API Gatewayとの統合を想定したレスポンス形式
+
+def _health_payload(context):
     return {
-        'statusCode': 200,
-        'headers': {
-            'Content-Type': 'application/json',
-            # CORS設定（必要に応じて変更）
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
-        },
-        'body': json.dumps(response_data, ensure_ascii=False)
+        "status": "ok",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "request_id": context.aws_request_id,
+        "environment": os.environ.get("ENVIRONMENT", "unknown"),
+        "app_name": os.environ.get("APP_NAME", "lambda-function"),
+        "model_id": os.environ.get("BEDROCK_MODEL_ID", "unknown"),
     }
+
+
+def lambda_handler(event, context):
+    environment = os.environ.get("ENVIRONMENT", "unknown")
+    app_name = os.environ.get("APP_NAME", "lambda-function")
+    model_id = os.environ.get("BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0")
+    max_tokens = int(os.environ.get("BEDROCK_MAX_TOKENS", "256"))
+    temperature = float(os.environ.get("BEDROCK_TEMPERATURE", "0.5"))
+
+    logger.info("Lambda invoked in %s for app %s", environment, app_name)
+    logger.info("Request ID: %s", context.aws_request_id)
+    logger.debug("Received event: %s", json.dumps(event, ensure_ascii=False))
+
+    request_payload, request_meta = _extract_request_payload(event)
+    method = request_meta.get("method", "GET").upper()
+
+    if method == "GET":
+        return _response(200, _health_payload(context))
+
+    prompt = str(request_payload.get("prompt") or request_payload.get("message") or "").strip()
+    if not prompt:
+        return _response(
+            400,
+            {
+                "error": "prompt is required",
+                "request_id": context.aws_request_id,
+            },
+        )
+
+    try:
+        bedrock_response = bedrock_runtime.converse(
+            modelId=model_id,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [{"text": prompt}],
+                }
+            ],
+            inferenceConfig={
+                "maxTokens": max_tokens,
+                "temperature": temperature,
+            },
+        )
+    except (ClientError, BotoCoreError) as exc:
+        logger.exception("Failed to invoke Bedrock model: %s", exc)
+        return _response(
+            502,
+            {
+                "error": "Failed to invoke Bedrock",
+                "details": str(exc),
+                "request_id": context.aws_request_id,
+                "model_id": model_id,
+            },
+        )
+
+    output_text = _extract_text_from_converse_response(bedrock_response)
+    response_data = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "environment": environment,
+        "app_name": app_name,
+        "request_id": context.aws_request_id,
+        "model_id": model_id,
+        "prompt": prompt,
+        "output_text": output_text,
+        "stop_reason": bedrock_response.get("stopReason"),
+        "usage": bedrock_response.get("usage", {}),
+        "bedrock_request_id": ((bedrock_response.get("ResponseMetadata") or {}).get("RequestId")),
+        "request": request_meta,
+    }
+
+    logger.info("Bedrock response prepared successfully")
+    return _response(200, response_data)

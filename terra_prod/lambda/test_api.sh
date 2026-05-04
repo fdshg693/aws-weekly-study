@@ -6,12 +6,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 ENVIRONMENT="${1:-}"
-REQUEST_NAME="${REQUEST_NAME:-API Gateway}"
-REQUEST_MESSAGE="${REQUEST_MESSAGE:-Hello from test_api.sh}"
+PROMPT="${PROMPT:-AWS Lambda と Amazon Bedrock の関係を一文で説明してください}"
 API_URL="${API_URL:-}"
+API_KEY="${API_KEY:-}"
 API_GATEWAY_NAME="${API_GATEWAY_NAME:-}"
 API_GATEWAY_STAGE_NAME="${API_GATEWAY_STAGE_NAME:-}"
 AWS_REGION="${AWS_REGION:-}"
+MODEL_ID="${MODEL_ID:-}"
 
 if ! command -v terraform >/dev/null 2>&1; then
   echo "terraform が見つかりません。Terraform をインストールしてから再実行してください。" >&2
@@ -25,6 +26,11 @@ fi
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "jq が見つかりません。レスポンス整形のために必要です。" >&2
+  exit 1
+fi
+
+if ! command -v aws >/dev/null 2>&1; then
+  echo "aws CLI が見つかりません。Secrets Manager から API キーを取得するために必要です。" >&2
   exit 1
 fi
 
@@ -72,7 +78,30 @@ if [[ -z "$AWS_REGION" ]]; then
   AWS_REGION="$(terraform_output_json_field deployment_summary '.region')"
 fi
 
-POST_PAYLOAD="$(jq -cn --arg name "$REQUEST_NAME" --arg message "$REQUEST_MESSAGE" --arg environment "$ENVIRONMENT" '{name: $name, message: $message, environment: $environment}')"
+if [[ -z "$MODEL_ID" ]]; then
+  MODEL_ID="$(terraform_output_json_field deployment_summary '.bedrock_model_id')"
+fi
+
+if [[ -z "$API_KEY" ]]; then
+  SECRET_NAME="$(terraform_output_raw api_key_secret_name)"
+  if [[ -z "$SECRET_NAME" ]]; then
+    echo "API key secret name を取得できませんでした。terraform apply 実行後に再試行してください。" >&2
+    exit 1
+  fi
+
+  API_KEY="$(aws secretsmanager get-secret-value \
+    --secret-id "$SECRET_NAME" \
+    --region "$AWS_REGION" \
+    --query SecretString \
+    --output text | jq -r '.api_key // .')"
+fi
+
+if [[ -z "$API_KEY" ]]; then
+  echo "API key を取得できませんでした。" >&2
+  exit 1
+fi
+
+POST_PAYLOAD="$(jq -cn --arg prompt "$PROMPT" --arg environment "$ENVIRONMENT" '{prompt: $prompt, environment: $environment}')"
 
 echo "==> Testing API Gateway endpoint"
 echo "Environment: $ENVIRONMENT"
@@ -86,26 +115,63 @@ if [[ -n "$API_GATEWAY_STAGE_NAME" ]]; then
   echo "Stage: $API_GATEWAY_STAGE_NAME"
 fi
 echo "URL: $API_URL"
+echo "Model: ${MODEL_ID:-unknown}"
 echo
 
-echo "[1/2] POST request"
-POST_RESPONSE="$(curl -sS -X POST "$API_URL" -H 'Content-Type: application/json' -d "$POST_PAYLOAD")"
-echo "$POST_RESPONSE" | jq .
+echo "[1/4] Unauthenticated GET should be rejected"
+UNAUTH_BODY_FILE="$(mktemp)"
+UNAUTH_STATUS="$(curl -sS -o "$UNAUTH_BODY_FILE" -w '%{http_code}' "$API_URL")"
+cat "$UNAUTH_BODY_FILE" | jq . 2>/dev/null || cat "$UNAUTH_BODY_FILE"
+if [[ "$UNAUTH_STATUS" != "401" && "$UNAUTH_STATUS" != "403" ]]; then
+  echo "認証なしリクエストが拒否されませんでした。status=$UNAUTH_STATUS" >&2
+  rm -f "$UNAUTH_BODY_FILE"
+  exit 1
+fi
+rm -f "$UNAUTH_BODY_FILE"
 
-POST_GREETING="$(echo "$POST_RESPONSE" | jq -r '.greeting // empty')"
-if [[ "$POST_GREETING" != "$REQUEST_MESSAGE, $REQUEST_NAME!" ]]; then
-  echo "POST レスポンスの greeting が期待値と一致しません。" >&2
+echo
+echo "[2/4] Invalid API key should be rejected"
+INVALID_BODY_FILE="$(mktemp)"
+INVALID_STATUS="$(curl -sS -o "$INVALID_BODY_FILE" -w '%{http_code}' -H 'x-api-key: invalid-key' "$API_URL")"
+cat "$INVALID_BODY_FILE" | jq . 2>/dev/null || cat "$INVALID_BODY_FILE"
+if [[ "$INVALID_STATUS" != "401" && "$INVALID_STATUS" != "403" ]]; then
+  echo "不正 API キーのリクエストが拒否されませんでした。status=$INVALID_STATUS" >&2
+  rm -f "$INVALID_BODY_FILE"
+  exit 1
+fi
+rm -f "$INVALID_BODY_FILE"
+
+echo
+echo "[3/4] Authenticated GET health check"
+GET_RESPONSE="$(curl -sS --get "$API_URL" -H "x-api-key: $API_KEY")"
+echo "$GET_RESPONSE" | jq .
+
+GET_STATUS_VALUE="$(echo "$GET_RESPONSE" | jq -r '.status // empty')"
+if [[ "$GET_STATUS_VALUE" != "ok" ]]; then
+  echo "GET レスポンスの status が期待値と一致しません。" >&2
+  exit 1
+fi
+
+GET_MODEL_ID="$(echo "$GET_RESPONSE" | jq -r '.model_id // empty')"
+if [[ -n "$MODEL_ID" && "$GET_MODEL_ID" != "$MODEL_ID" ]]; then
+  echo "GET レスポンスの model_id が期待値と一致しません。" >&2
   exit 1
 fi
 
 echo
-echo "[2/2] GET request"
-GET_RESPONSE="$(curl -sS --get "$API_URL" --data-urlencode "name=$REQUEST_NAME" --data-urlencode "message=$REQUEST_MESSAGE")"
-echo "$GET_RESPONSE" | jq .
+echo "[4/4] Authenticated POST Bedrock invocation"
+POST_RESPONSE="$(curl -sS -X POST "$API_URL" -H 'Content-Type: application/json' -H "x-api-key: $API_KEY" -d "$POST_PAYLOAD")"
+echo "$POST_RESPONSE" | jq .
 
-GET_GREETING="$(echo "$GET_RESPONSE" | jq -r '.greeting // empty')"
-if [[ "$GET_GREETING" != "$REQUEST_MESSAGE, $REQUEST_NAME!" ]]; then
-  echo "GET レスポンスの greeting が期待値と一致しません。" >&2
+POST_OUTPUT_TEXT="$(echo "$POST_RESPONSE" | jq -r '.output_text // empty')"
+if [[ -z "$POST_OUTPUT_TEXT" ]]; then
+  echo "POST レスポンスに output_text が含まれていません。" >&2
+  exit 1
+fi
+
+POST_MODEL_ID="$(echo "$POST_RESPONSE" | jq -r '.model_id // empty')"
+if [[ -n "$MODEL_ID" && "$POST_MODEL_ID" != "$MODEL_ID" ]]; then
+  echo "POST レスポンスの model_id が期待値と一致しません。" >&2
   exit 1
 fi
 
