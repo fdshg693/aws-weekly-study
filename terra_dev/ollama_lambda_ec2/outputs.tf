@@ -1,16 +1,26 @@
 output "api_endpoint" {
-  description = "Base HTTPS endpoint for the HTTP API. With the $default stage, append /generate directly."
+  description = "Base HTTPS endpoint for the HTTP API. With the $default stage, append /generate or /requests/{request_id}."
   value       = aws_apigatewayv2_api.http.api_endpoint
 }
 
 output "generate_url" {
-  description = "Ready-to-use POST endpoint for prompt generation requests."
+  description = "Ready-to-use POST endpoint for asynchronous prompt generation requests."
   value       = "${aws_apigatewayv2_api.http.api_endpoint}/generate"
 }
 
+output "request_status_url_template" {
+  description = "Template for polling request status after POST /generate returns a request_id."
+  value       = "${aws_apigatewayv2_api.http.api_endpoint}/requests/{request_id}"
+}
+
 output "lambda_function_name" {
-  description = "Name of the Lambda proxy function."
-  value       = aws_lambda_function.proxy.function_name
+  description = "Name of the API Lambda function that accepts requests and returns status."
+  value       = aws_lambda_function.api.function_name
+}
+
+output "worker_lambda_function_name" {
+  description = "Name of the worker Lambda function that drains the FIFO queue and calls Ollama."
+  value       = aws_lambda_function.worker.function_name
 }
 
 output "ec2_instance_id" {
@@ -36,6 +46,16 @@ output "shared_api_secret_arn" {
 output "shared_api_secret_name" {
   description = "Secrets Manager name that operators can use with the AWS CLI."
   value       = aws_secretsmanager_secret.shared_api_secret.name
+}
+
+output "request_queue_url" {
+  description = "URL of the FIFO queue that serializes Ollama requests."
+  value       = aws_sqs_queue.request_queue.id
+}
+
+output "request_status_table_name" {
+  description = "DynamoDB table that stores queued request state and completed results."
+  value       = aws_dynamodb_table.requests.name
 }
 
 output "default_vpc_id" {

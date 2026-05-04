@@ -1,12 +1,5 @@
 # pyright: reportMissingImports=false
 
-"""Lambda proxy for the Ollama-on-EC2 sample project.
-
-This function sits behind API Gateway HTTP API, validates a shared x-api-key header
-against a value stored in AWS Secrets Manager, and then forwards the request to the
-Ollama REST API running on EC2.
-"""
-
 from __future__ import annotations
 
 import base64
@@ -15,6 +8,7 @@ import json
 import logging
 import os
 import socket
+from datetime import datetime, timezone
 from typing import Any
 from urllib import error, request
 from urllib.parse import urlsplit
@@ -25,6 +19,8 @@ from botocore.config import Config
 LOGGER = logging.getLogger()
 LOGGER.setLevel(logging.INFO)
 
+JSON_HEADERS = {"content-type": "application/json; charset=utf-8"}
+
 SECRETS_CLIENT = boto3.client(
     "secretsmanager",
     config=Config(retries={"max_attempts": 2, "mode": "standard"}),
@@ -32,13 +28,27 @@ SECRETS_CLIENT = boto3.client(
 SECRET_CACHE: str | None = None
 
 DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "qwen2.5:0.5b")
-OLLAMA_BASE_URL = os.environ["OLLAMA_BASE_URL"].rstrip("/")
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "").rstrip("/")
 SECRET_ARN = os.environ.get("SHARED_API_SECRET_ARN") or os.environ.get("SHARED_API_SECRET_NAME", "")
 REQUEST_TIMEOUT_SECONDS = int(os.environ.get("OLLAMA_REQUEST_TIMEOUT_SECONDS", "25"))
-JSON_HEADERS = {"content-type": "application/json; charset=utf-8"}
 
 
-def _response(status_code: int, body: dict[str, Any]) -> dict[str, Any]:
+class RequestError(Exception):
+    def __init__(self, status_code: int, message: str):
+        super().__init__(message)
+        self.status_code = status_code
+        self.message = message
+
+
+class OllamaInvocationError(Exception):
+    def __init__(self, message: str, *, status_code: int, details: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+        self.details = details or {}
+
+
+def json_response(status_code: int, body: dict[str, Any]) -> dict[str, Any]:
     return {
         "statusCode": status_code,
         "headers": JSON_HEADERS,
@@ -46,7 +56,11 @@ def _response(status_code: int, body: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _get_header(headers: dict[str, Any] | None, key: str) -> str:
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def get_header(headers: dict[str, Any] | None, key: str) -> str:
     if not headers:
         return ""
 
@@ -57,7 +71,7 @@ def _get_header(headers: dict[str, Any] | None, key: str) -> str:
     return ""
 
 
-def _decode_body(event: dict[str, Any]) -> str:
+def decode_body(event: dict[str, Any]) -> str:
     body = event.get("body") or ""
     if not body:
         return ""
@@ -67,19 +81,19 @@ def _decode_body(event: dict[str, Any]) -> str:
     return body
 
 
-def _parse_request(event: dict[str, Any]) -> tuple[str, str]:
-    raw_body = _decode_body(event)
+def parse_generate_request(event: dict[str, Any]) -> tuple[str, str]:
+    raw_body = decode_body(event)
     if not raw_body:
-        raise ValueError("Request body must not be empty.")
+        raise RequestError(400, "Request body must not be empty.")
 
     try:
         payload = json.loads(raw_body)
     except json.JSONDecodeError as exc:
-        raise ValueError("Request body must be valid JSON.") from exc
+        raise RequestError(400, "Request body must be valid JSON.") from exc
 
     prompt = payload.get("prompt")
     if not isinstance(prompt, str) or not prompt.strip():
-        raise ValueError("prompt must be a non-empty string.")
+        raise RequestError(400, "prompt must be a non-empty string.")
 
     requested_model = payload.get("model")
     if requested_model is None or requested_model == "":
@@ -87,12 +101,12 @@ def _parse_request(event: dict[str, Any]) -> tuple[str, str]:
     elif isinstance(requested_model, str):
         model = requested_model.strip() or DEFAULT_MODEL
     else:
-        raise ValueError("model must be a string when provided.")
+        raise RequestError(400, "model must be a string when provided.")
 
     return prompt.strip(), model
 
 
-def _load_shared_secret() -> str:
+def load_shared_secret() -> str:
     global SECRET_CACHE
 
     if SECRET_CACHE is not None:
@@ -110,7 +124,31 @@ def _load_shared_secret() -> str:
     return SECRET_CACHE
 
 
-def _forward_to_ollama(prompt: str, model: str, request_id: str) -> dict[str, Any]:
+def require_api_key(headers: dict[str, Any] | None) -> None:
+    supplied_api_key = get_header(headers, "x-api-key")
+    if not supplied_api_key:
+        raise RequestError(403, "x-api-key header is required.")
+
+    expected_api_key = load_shared_secret()
+    if not hmac.compare_digest(supplied_api_key, expected_api_key):
+        raise RequestError(403, "Invalid API key.")
+
+
+def build_status_url(event: dict[str, Any], request_id: str) -> str:
+    request_context = event.get("requestContext") or {}
+    domain_name = request_context.get("domainName")
+    if not domain_name:
+        return f"/requests/{request_id}"
+
+    stage = request_context.get("stage") or "$default"
+    stage_prefix = "" if stage == "$default" else f"/{stage}"
+    return f"https://{domain_name}{stage_prefix}/requests/{request_id}"
+
+
+def forward_to_ollama(prompt: str, model: str, request_id: str) -> dict[str, Any]:
+    if not OLLAMA_BASE_URL:
+        raise RuntimeError("OLLAMA_BASE_URL must be configured for the worker Lambda.")
+
     target = urlsplit(OLLAMA_BASE_URL)
     target_host = target.hostname or "unknown"
     target_port = target.port or (443 if target.scheme == "https" else 80)
@@ -132,11 +170,13 @@ def _forward_to_ollama(prompt: str, model: str, request_id: str) -> dict[str, An
         REQUEST_TIMEOUT_SECONDS,
     )
 
-    payload = json.dumps({
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-    }).encode("utf-8")
+    payload = json.dumps(
+        {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+        }
+    ).encode("utf-8")
 
     upstream_request = request.Request(
         url=f"{OLLAMA_BASE_URL}/api/generate",
@@ -156,14 +196,14 @@ def _forward_to_ollama(prompt: str, model: str, request_id: str) -> dict[str, An
             request_id,
             OLLAMA_BASE_URL,
         )
-        return _response(
-            502,
-            {
-                "message": "Upstream Ollama API returned an error.",
+        raise OllamaInvocationError(
+            "Upstream Ollama API returned an error.",
+            status_code=502,
+            details={
                 "upstream_status": exc.code,
                 "upstream_body": upstream_error[:1000],
             },
-        )
+        ) from exc
     except error.URLError as exc:
         reason = exc.reason
         LOGGER.warning(
@@ -174,14 +214,20 @@ def _forward_to_ollama(prompt: str, model: str, request_id: str) -> dict[str, An
             reason,
         )
         if isinstance(reason, socket.timeout):
-            return _response(504, {"message": "Timed out while waiting for Ollama response."})
-        return _response(502, {"message": f"Failed to connect to Ollama: {reason}"})
-    except TimeoutError:
+            raise OllamaInvocationError(
+                "Timed out while waiting for Ollama response.",
+                status_code=504,
+            ) from exc
+        raise OllamaInvocationError(
+            f"Failed to connect to Ollama: {reason}",
+            status_code=502,
+        ) from exc
+    except TimeoutError as exc:
         LOGGER.warning("Timed out connecting to Ollama for request_id=%s target=%s", request_id, OLLAMA_BASE_URL)
-        return _response(504, {"message": "Timed out while waiting for Ollama response."})
-    except socket.timeout:
+        raise OllamaInvocationError("Timed out while waiting for Ollama response.", status_code=504) from exc
+    except socket.timeout as exc:
         LOGGER.warning("Socket timed out connecting to Ollama for request_id=%s target=%s", request_id, OLLAMA_BASE_URL)
-        return _response(504, {"message": "Timed out while waiting for Ollama response."})
+        raise OllamaInvocationError("Timed out while waiting for Ollama response.", status_code=504) from exc
 
     LOGGER.info(
         "Received upstream response for request_id=%s target=%s payload_bytes=%s",
@@ -192,43 +238,21 @@ def _forward_to_ollama(prompt: str, model: str, request_id: str) -> dict[str, An
 
     try:
         upstream_json = json.loads(upstream_payload)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
         LOGGER.exception("Ollama returned non-JSON payload")
-        return _response(502, {"message": "Ollama returned a non-JSON response."})
+        raise OllamaInvocationError(
+            "Ollama returned a non-JSON response.",
+            status_code=502,
+        ) from exc
 
-    return _response(
-        200,
-        {
-            "model": upstream_json.get("model", model),
-            "response": upstream_json.get("response", ""),
-            "done": upstream_json.get("done", False),
-            "done_reason": upstream_json.get("done_reason"),
-            "context": upstream_json.get("context"),
-            "total_duration": upstream_json.get("total_duration"),
-            "load_duration": upstream_json.get("load_duration"),
-            "eval_count": upstream_json.get("eval_count"),
-            "eval_duration": upstream_json.get("eval_duration"),
-        },
-    )
-
-
-def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    request_id = getattr(context, "aws_request_id", "unknown")
-    LOGGER.info("Handling request_id=%s", request_id)
-
-    try:
-        supplied_api_key = _get_header(event.get("headers"), "x-api-key")
-        if not supplied_api_key:
-            return _response(403, {"message": "x-api-key header is required."})
-
-        expected_api_key = _load_shared_secret()
-        if not hmac.compare_digest(supplied_api_key, expected_api_key):
-            return _response(403, {"message": "Invalid API key."})
-
-        prompt, model = _parse_request(event)
-        return _forward_to_ollama(prompt=prompt, model=model, request_id=request_id)
-    except ValueError as exc:
-        return _response(400, {"message": str(exc)})
-    except Exception:
-        LOGGER.exception("Unhandled error while processing request_id=%s", request_id)
-        return _response(500, {"message": "Internal server error."})
+    return {
+        "model": upstream_json.get("model", model),
+        "response": upstream_json.get("response", ""),
+        "done": upstream_json.get("done", False),
+        "done_reason": upstream_json.get("done_reason"),
+        "context": upstream_json.get("context"),
+        "total_duration": upstream_json.get("total_duration"),
+        "load_duration": upstream_json.get("load_duration"),
+        "eval_count": upstream_json.get("eval_count"),
+        "eval_duration": upstream_json.get("eval_duration"),
+    }

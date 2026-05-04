@@ -1,22 +1,20 @@
-# Big Picture - Ollama on EC2 + Lambda API
-
-## このファイルの役割
-
-このファイルは、`PLAN.md` に書いた実装方針のうち、**実際にどの設定で作るかを確定した内容だけ**をまとめる。
-概要説明や学習ポイントは `PLAN.md` に任せ、ここでは「何をどう設定するか」を明示する。
+# Big Picture - Ollama on EC2 + Async Lambda API
 
 ## 確定した設計判断
 
 | 項目 | 確定内容 | 補足 |
 |------|----------|------|
 | 詳細設計ファイル名 | `DETAIL.md` | 既存プロジェクトに合わせる |
-| 構成管理の責務分離 | **Terraform = AWSリソース作成** / **Ansible Playbook = EC2内部設定と更新** | EC2 の中身は Playbook で管理する |
+| 構成管理の責務分離 | **Terraform = AWS リソース作成** / **Ansible Playbook = EC2 内部設定と更新** | EC2 の中身は Playbook で管理する |
 | Playbook の適用範囲 | Ollama インストール、systemd 設定、モデル pull、推論設定、更新作業 | 初回構築だけでなく更新手順も Playbook 前提 |
-| API の公開方式 | API Gateway → Lambda → EC2(Ollama) | EC2 を直接 API 公開しない |
-| EC2 と Lambda の通信 | **同一 VPC 内の private IP 通信** | Ollama は private IP 宛にのみ使う |
+| API の公開方式 | **API Gateway → API Lambda → SQS FIFO → Worker Lambda → EC2(Ollama)** | EC2 を直接 API 公開しない |
+| API 応答方式 | `POST /generate` は `202 Accepted`、結果取得は `GET /requests/{request_id}` | 重い推論処理はキューに逃がす |
+| キュー制御 | **SQS FIFO + batch size 1 + Worker Lambda reserved concurrency = 1** | Ollama 推論を常に 1 件ずつ直列実行する |
+| 状態保存 | **DynamoDB** に `QUEUED` / `PROCESSING` / `SUCCEEDED` / `FAILED` を保存 | 完了結果や失敗詳細も保持する |
+| EC2 と Lambda の通信 | **同一 VPC 内の private IP 通信** | 実際に Ollama を呼ぶのは Worker Lambda |
 | EC2 への運用アクセス | **Session Manager 優先** | SSH は初期構成では作らない |
-| API 認証 | **共有シークレット方式** | Lambda でヘッダーを検証する |
-| 初期モデル | `qwen2.5:0.5b` | Lambda からの指定がなければこのモデルを使う |
+| API 認証 | **共有シークレット方式** | API Lambda が `x-api-key` を検証する |
+| 初期モデル | `qwen2.5:0.5b` | リクエストで省略された場合の既定値 |
 
 ## 採用する具体設定
 
@@ -33,27 +31,69 @@
 ### ネットワーク設定
 
 - **既存の Default VPC を利用する**
-  - 学習コストと Terraform 記述量を抑えるため、初期版では専用 VPC を新設しない
-- EC2 は Default VPC のサブネットに配置する
-- Lambda も同一 VPC のサブネットに配置する
+  - 学習コストと Terraform 記述量を抑えるため、専用 VPC は新設しない
+- EC2 は Default VPC の default subnet に配置する
+- API Lambda / Worker Lambda も同じ Default VPC の default subnet 群に VPC 接続する
 - Lambda から EC2 へは **private IP** で接続する
 - EC2 の Ollama 待受ポートは `11434`
+- NAT Gateway は使わず、Lambda からの AWS サービス到達性は次で確保する
+  - Secrets Manager: **Interface VPC Endpoint**
+  - SQS: **Interface VPC Endpoint**
+  - DynamoDB: **Gateway VPC Endpoint**
 
 ### セキュリティグループ設定
 
 #### EC2 用 Security Group
 
 - Inbound
-  - `11434/tcp` : **Lambda 用 Security Group からのみ許可**
+  - `11434/tcp`: **Lambda 用 Security Group からのみ許可**
 - Outbound
-  - `443/tcp` : インターネット向け許可（Ollama ダウンロード、モデル取得、AWS API 呼び出し用）
-  - `80/tcp` : 初期セットアップ時のパッケージ取得用に許可
-  - その他はデフォルト許可のまま始め、必要に応じて絞る
+  - `443/tcp`: パッケージ取得、Ollama 本体 / モデル取得、SSM 関連通信用
+  - `80/tcp`: 一部パッケージ取得の初期通信向け
+  - `53/tcp`, `53/udp`: VPC DNS Resolver 向け
 
 #### Lambda 用 Security Group
 
 - Outbound
-  - `11434/tcp` : EC2 用 Security Group 宛て通信を許可
+  - `11434/tcp`: EC2 用 Security Group 宛て
+  - `443/tcp`: Secrets Manager Interface Endpoint 宛て
+  - `443/tcp`: SQS Interface Endpoint 宛て
+  - `443/tcp`: DynamoDB Prefix List 宛て
+  - `53/tcp`, `53/udp`: VPC DNS Resolver 宛て
+
+#### Interface Endpoint 用 Security Group
+
+- Inbound
+  - `443/tcp`: Lambda 用 Security Group からのみ許可
+
+> 補足: API Lambda と Worker Lambda は同じ Lambda Security Group を共有します。実装上、EC2 への Ollama 呼び出しは Worker Lambda だけが行いますが、ネットワーク許可そのものは Lambda SG 単位です。
+
+### 非同期リクエストパイプライン
+
+1. クライアントが `POST /generate` を呼び出す
+2. API Lambda が `x-api-key` と JSON ボディを検証する
+3. API Lambda が DynamoDB に初期状態 `QUEUED` のレコードを作成する
+4. API Lambda が SQS FIFO にメッセージを投入する
+   - `MessageGroupId`: 固定値
+   - `MessageDeduplicationId`: `request_id`
+5. API Lambda は `202 Accepted` と `request_id` / `status_url` を返す
+6. SQS Event Source Mapping が `batch_size = 1` で Worker Lambda を起動する
+7. Worker Lambda が DynamoDB を `PROCESSING` に更新し、EC2 上の Ollama を private IP で呼ぶ
+8. Worker Lambda が結果に応じて DynamoDB を更新する
+   - 成功: `SUCCEEDED` + `result_json`
+   - 失敗: `FAILED` + `error_message` / `error_type` / `error_details_json`
+9. クライアントは `GET /requests/{request_id}` をポーリングして状態を見る
+10. 再試行上限を超えたメッセージは DLQ に送られる
+
+### DynamoDB に保存する主な項目
+
+- `request_id`: パーティションキー
+- `status`: `QUEUED` / `PROCESSING` / `SUCCEEDED` / `FAILED`
+- `model`: リクエスト時に確定したモデル名
+- `created_at`, `updated_at`, `completed_at`: ISO 8601 形式の時刻
+- `result_json`: 成功時の Ollama 応答 JSON
+- `error_message`, `error_type`, `error_details_json`: 失敗時の情報
+- `expires_at`: TTL 用 Unix epoch 秒
 
 ### EC2 設定
 
@@ -67,8 +107,8 @@
   - サイズ: `30GB`
   - 暗号化: 有効
 - パブリック公開:
-  - EC2 に対する公開 HTTP/HTTPS は作らない
-  - セキュリティグループで `22`, `80`, `443`, `11434` の外部公開はしない
+  - Public IP は付くが、外部向け Inbound は開けない
+  - `22`, `80`, `443`, `11434` はインターネットに公開しない
 
 ### Ollama 設定
 
@@ -85,43 +125,64 @@
 
 ### Lambda 設定
 
+#### API Lambda
+
 - ランタイム: `Python 3.12`
 - アーキテクチャ: `x86_64`
-- タイムアウト: `29秒`
-  - API Gateway の上限を意識して 29 秒に固定
-- メモリサイズ: `1024MB`
-- 配置: EC2 と同一 VPC 内
-- 環境変数:
+- 配置: Default VPC の default subnet 群
+- 主な役割:
+  - `x-api-key` 検証
+  - `POST /generate` の入力検証
+  - DynamoDB への初期レコード作成
+  - SQS FIFO への投入
+  - `GET /requests/{request_id}` の状態参照
+- 主な環境変数:
+  - `DEFAULT_MODEL`
+  - `REQUESTS_TABLE_NAME`
+  - `REQUEST_QUEUE_URL`
+  - `REQUEST_QUEUE_GROUP_ID`
+  - `REQUEST_STATUS_TTL_HOURS`
+  - `SHARED_API_SECRET_ARN`
+  - `SHARED_API_SECRET_NAME`
+
+#### Worker Lambda
+
+- ランタイム: `Python 3.12`
+- アーキテクチャ: `x86_64`
+- 配置: Default VPC の default subnet 群
+- `reserved_concurrent_executions = 1`
+- Event Source Mapping: SQS FIFO / `batch_size = 1`
+- 主な役割:
+  - SQS メッセージ 1 件処理
+  - DynamoDB の `PROCESSING` / `SUCCEEDED` / `FAILED` 更新
+  - EC2 上の Ollama 呼び出し
+- 主な環境変数:
+  - `DEFAULT_MODEL`
   - `OLLAMA_BASE_URL=http://<ec2_private_ip>:11434`
-  - `DEFAULT_MODEL=qwen2.5:0.5b`
-  - `SHARED_API_SECRET=<Secrets Manager 参照 or Terraform 変数>`
-- Lambda の役割:
-  - リクエストヘッダーのシークレット検証
-  - リクエスト JSON の検証
-  - Ollama API への転送
-  - エラー整形
+  - `OLLAMA_REQUEST_TIMEOUT_SECONDS`
+  - `REQUESTS_TABLE_NAME`
 
 ### API Gateway 設定
 
 - API 種別: **HTTP API**
-- エンドポイント:
+- Lambda Proxy Integration: payload format version `2.0`
+- 公開ルート:
   - `POST /generate`
-- リクエスト例:
-  - `prompt`: 必須
-  - `model`: 任意、省略時は `qwen2.5:0.5b`
-- 初期版では **streaming は無効**
-  - Lambda 経由の実装を簡単に保つため、まずは通常レスポンスのみ対応
+  - `GET /requests/{request_id}`
 - 認証:
-  - `x-api-key` のような共有シークレット用ヘッダーをクライアントが送信
-  - Lambda 側で検証し、不一致なら `403` を返す
+  - 両ルートとも `x-api-key` を送る
+  - API Lambda が検証し、不一致なら `403` を返す
+- streaming は使わない
+  - まずは通常レスポンスのみ対応する
 
 ### Secrets / 認証情報
 
-- 共有シークレットは **AWS Secrets Manager で管理する前提** とする
-- Terraform でシークレットリソースを作成し、値自体は変数経由で投入する
-- Lambda には平文固定値をハードコードしない
-- EC2 側には API 認証用シークレットを置かない
-  - API 認証の責務は Lambda 側に限定する
+- 共有シークレットは **AWS Secrets Manager** で管理する
+- Terraform で Secret と Secret Version を作成する
+- API Lambda には平文を埋め込まず、実行時に Secret を取得してキャッシュする
+- Worker Lambda や EC2 側には API 認証用シークレットを置かない
+- 注意点:
+  - `aws_secretsmanager_secret_version` により **Terraform state に平文が残る**
 
 ### IAM 設定
 
@@ -129,13 +190,20 @@
 
 - `AmazonSSMManagedInstanceCore` を付与
 - 初期版では S3 / Secrets Manager への追加権限は付与しない
-  - Ollama インストールとモデル取得はインターネット経由で行う
 
-#### Lambda ロール
+#### API Lambda ロール
 
 - CloudWatch Logs 書き込み権限
-- Secrets Manager 読み取り権限（共有シークレット取得用）
-- ENI 作成に必要な VPC 実行権限
+- VPC 実行権限
+- Secrets Manager 読み取り権限
+- DynamoDB `GetItem` / `PutItem`
+- SQS `SendMessage`
+
+#### Worker Lambda ロール
+
+- CloudWatch Logs 書き込み権限
+- VPC 実行権限
+- DynamoDB `GetItem` / `UpdateItem`
 
 ## Playbook 運用方針
 
@@ -186,6 +254,7 @@ ollama_lambda_ec2/
 ├── network.tf
 ├── ec2.tf
 ├── lambda.tf
+├── async.tf
 ├── api_gateway.tf
 ├── iam.tf
 ├── outputs.tf
@@ -193,7 +262,9 @@ ollama_lambda_ec2/
 ├── prod.tfvars
 ├── user_data.sh
 ├── src/
-│   └── lambda_function.py
+│   ├── common.py
+│   ├── api_lambda.py
+│   └── worker_lambda.py
 └── ansible/
     ├── ansible.cfg
     ├── inventory.aws_ec2.yml
@@ -208,9 +279,9 @@ ollama_lambda_ec2/
             └── defaults/main.yml
 ```
 
-## API リクエスト / レスポンスの初期仕様
+## API リクエスト / レスポンス仕様
 
-### リクエスト
+### `POST /generate` リクエスト
 
 ```json
 {
@@ -219,18 +290,55 @@ ollama_lambda_ec2/
 }
 ```
 
-### ヘッダー
+### 共通ヘッダー
 
 - `Content-Type: application/json`
 - `x-api-key: <shared-secret>`
 
-### 正常レスポンス
+### `POST /generate` 正常レスポンス (`202 Accepted`)
 
 ```json
 {
+  "request_id": "<api-lambda-request-id>",
+  "status": "QUEUED",
+  "status_url": "https://.../requests/<api-lambda-request-id>"
+}
+```
+
+### `GET /requests/{request_id}` 成功レスポンス例
+
+```json
+{
+  "request_id": "<api-lambda-request-id>",
+  "status": "SUCCEEDED",
   "model": "qwen2.5:0.5b",
-  "response": "...",
-  "done": true
+  "result": {
+    "model": "qwen2.5:0.5b",
+    "response": "...",
+    "done": true
+  }
+}
+```
+
+### `GET /requests/{request_id}` 処理中レスポンス例
+
+```json
+{
+  "request_id": "<api-lambda-request-id>",
+  "status": "PROCESSING"
+}
+```
+
+### `GET /requests/{request_id}` 失敗レスポンス例
+
+```json
+{
+  "request_id": "<api-lambda-request-id>",
+  "status": "FAILED",
+  "error": {
+    "message": "Request processing failed.",
+    "type": "OllamaInvocationError"
+  }
 }
 ```
 
@@ -238,9 +346,9 @@ ollama_lambda_ec2/
 
 - 認証失敗: `403`
 - 入力不正: `400`
-- EC2 接続失敗: `502`
-- Ollama 応答タイムアウト: `504`
-- Lambda 内部エラー: `500`
+- 存在しない `request_id`: `404`
+- API Lambda 内部エラー: `500`
+- Worker 側の接続失敗や推論失敗: HTTP エラーとして即返さず、DynamoDB 上の `FAILED` として返す
 
 ## 運用ルール
 
@@ -250,6 +358,7 @@ ollama_lambda_ec2/
 - Lambda コード変更: Terraform 経由で再デプロイ
 - SSH 鍵は初期版では作らない
 - EC2 への手動ログインは Session Manager のみを基本とする
+- キュー詰まりや失敗調査は CloudWatch Logs / DynamoDB / DLQ を合わせて確認する
 
 ## 今回あえて採用しないもの
 

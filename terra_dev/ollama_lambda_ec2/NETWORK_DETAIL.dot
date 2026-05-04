@@ -1,0 +1,75 @@
+digraph ollama_lambda_ec2_network {
+  graph [
+    rankdir=LR,
+    fontsize=12,
+    labelloc="t",
+    label="ollama_lambda_ec2 detailed async network"
+  ];
+  node [shape=box, style="rounded,filled", fillcolor=white, fontsize=11];
+  edge [fontsize=10];
+
+  client [label="Client\n(curl / app)", fillcolor="#E8F3FF"];
+  apigw [label="API Gateway HTTP API\nPOST /generate\nGET /requests/{request_id}\nPublic HTTPS endpoint", fillcolor="#FFF4D6"];
+
+  subgraph cluster_aws {
+    label="AWS account / ap-northeast-1";
+    style="rounded";
+    color="#BBBBBB";
+
+    api_lambda_service [label="Lambda service\nAPI Lambda invoke", fillcolor="#FDE2FF"];
+    worker_lambda_service [label="Lambda service\nWorker Lambda invoke", fillcolor="#FDE2FF"];
+    request_queue [label="SQS FIFO queue\nrequest_queue\nserializes requests", fillcolor="#E9FFE3"];
+    request_dlq [label="SQS FIFO DLQ\nfailed messages", fillcolor="#FFECEC"];
+    secrets_manager [label="Secrets Manager\nshared-api-secret", fillcolor="#E9FFE3"];
+    dynamodb [label="DynamoDB\nrequests table\nstatus + result store", fillcolor="#E9FFE3"];
+    internet [label="Internet / public AWS services\npackage repo / model source / SSM related endpoints", fillcolor="#F5F5F5"];
+
+    subgraph cluster_vpc {
+      label="Default VPC";
+      style="rounded";
+      color="#7FA7FF";
+
+      dns [label="VPC DNS Resolver\n(cidrhost(vpc_cidr, 2))", fillcolor="#EAF2FF"];
+      dynamodb_vpce [label="Gateway VPC Endpoint\nDynamoDB\nattached to default route tables", fillcolor="#E9FFE3"];
+
+      subgraph cluster_subnets {
+        label="Default subnets (all AZs)";
+        style="rounded,dashed";
+        color="#A0A0A0";
+
+        api_lambda_eni [label="API Lambda ENIs\nin default subnets\nSG: lambda", fillcolor="#FDE2FF"];
+        worker_lambda_eni [label="Worker Lambda ENIs\nin default subnets\nSG: lambda\nreserved concurrency = 1", fillcolor="#FDE2FF"];
+        vpce_secrets [label="Interface VPC Endpoint\nSecrets Manager\nprivate_dns_enabled = true\nSG: vpce_secrets_manager", fillcolor="#E9FFE3"];
+        vpce_sqs [label="Interface VPC Endpoint\nSQS\nprivate_dns_enabled = true\nSG: vpce_sqs", fillcolor="#E9FFE3"];
+        ec2 [label="EC2 Ollama server\nAmazon Linux 2023\npublic IP attached\nSG: ec2", fillcolor="#FFE7D6"];
+      }
+    }
+  }
+
+  client -> apigw [label="HTTPS 443\nPOST /generate\nGET /requests/{request_id}\nx-api-key header"];
+  apigw -> api_lambda_service [label="Lambda proxy integration\npayload v2.0"];
+  api_lambda_service -> api_lambda_eni [label="attach to default VPC\nsubnet_ids = default_subnet_ids"];
+
+  api_lambda_eni -> dns [label="TCP/UDP 53\nprivate DNS lookup"];
+  worker_lambda_eni -> dns [label="TCP/UDP 53\nprivate DNS lookup"];
+  api_lambda_eni -> vpce_secrets [label="TCP 443\nget shared secret"];
+  vpce_secrets -> secrets_manager [label="AWS private backbone\nservice: secretsmanager"];
+
+  api_lambda_eni -> vpce_sqs [label="TCP 443\nenqueue request"];
+  vpce_sqs -> request_queue [label="AWS private backbone\nservice: sqs"];
+
+  api_lambda_eni -> dynamodb_vpce [label="TCP 443\nput/get request status"];
+  worker_lambda_eni -> dynamodb_vpce [label="TCP 443\nupdate request status"];
+  dynamodb_vpce -> dynamodb [label="Gateway endpoint route\nservice: dynamodb"];
+
+  request_queue -> worker_lambda_service [label="Event source mapping\nbatch_size = 1"];
+  worker_lambda_service -> worker_lambda_eni [label="attach to default VPC\nserial worker"];
+  request_queue -> request_dlq [style=dashed, color="#CC6666", label="after maxReceiveCount"];
+
+  worker_lambda_eni -> ec2 [label="TCP 11434\nOllama API call\nSG-to-SG allowed"];
+
+  ec2 -> dns [label="TCP/UDP 53\nname resolution"];
+  ec2 -> internet [label="TCP 443/80\npackage install / model pull / SSM outbound"];
+
+  internet -> ec2 [style=dashed, color="#CC6666", label="No inbound from internet\nSSH/HTTP/HTTPS/11434 not opened"];
+}

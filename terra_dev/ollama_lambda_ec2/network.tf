@@ -10,19 +10,27 @@
 #    - TCP 443 番のみ許可
 #    - Lambda が VPC 内から Secrets Manager を private DNS 経由で利用するための通信です
 #
-# 3. Lambda -> VPC DNS Resolver
+# 3. Lambda -> SQS 用 Interface VPC Endpoint
+#    - TCP 443 番のみ許可
+#    - API Lambda が非同期リクエストを FIFO キューに投入するための通信です
+#
+# 4. Lambda -> DynamoDB Gateway Endpoint
+#    - TCP 443 番のみ許可
+#    - API Lambda と Worker Lambda がリクエスト状態を DynamoDB に保存するための通信です
+#
+# 5. Lambda -> VPC DNS Resolver
 #    - TCP/UDP 53 番のみ許可
 #    - private DNS 名の名前解決に必要な DNS 通信です
 #
-# 4. EC2 -> インターネット
+# 6. EC2 -> インターネット
 #    - TCP 443/80 番のみ許可
 #    - パッケージ取得、モデルダウンロード、SSM 関連通信などのための外向き通信です
 #
-# 5. EC2 -> VPC DNS Resolver
+# 7. EC2 -> VPC DNS Resolver
 #    - TCP/UDP 53 番のみ許可
 #    - 名前解決に必要な DNS 通信です
 #
-# 6. Lambda -> Interface VPC Endpoint の通信は、送信側と受信側の両方で明示
+# 8. Lambda -> Interface VPC Endpoint の通信は、送信側と受信側の両方で明示
 #    - Lambda 側では TCP 443 番への送信のみ許可
 #    - Endpoint 側では Lambda からの TCP 443 番の受信のみ許可
 #    - これは Lambda 用 SG と Endpoint 用 SG が別であり、同じ通信を
@@ -59,6 +67,16 @@ resource "aws_security_group" "vpce_secrets_manager" {
 
   tags = {
     Name = "${local.name_prefix}-secrets-vpce-sg"
+  }
+}
+
+resource "aws_security_group" "vpce_sqs" {
+  name        = "${local.name_prefix}-sqs-vpce-sg"
+  description = "Security group attached to the SQS interface VPC endpoint"
+  vpc_id      = data.aws_vpc.default.id
+
+  tags = {
+    Name = "${local.name_prefix}-sqs-vpce-sg"
   }
 }
 
@@ -131,6 +149,24 @@ resource "aws_vpc_security_group_egress_rule" "lambda_to_secrets_vpce_https" {
   description                  = "Allow Lambda to reach Secrets Manager through the interface VPC endpoint"
 }
 
+resource "aws_vpc_security_group_egress_rule" "lambda_to_sqs_vpce_https" {
+  security_group_id            = aws_security_group.lambda.id
+  referenced_security_group_id = aws_security_group.vpce_sqs.id
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
+  description                  = "Allow Lambda to reach SQS through the interface VPC endpoint"
+}
+
+resource "aws_vpc_security_group_egress_rule" "lambda_to_dynamodb_https" {
+  security_group_id = aws_security_group.lambda.id
+  prefix_list_id    = data.aws_prefix_list.dynamodb.id
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  description       = "Allow Lambda to reach DynamoDB through the gateway VPC endpoint"
+}
+
 resource "aws_vpc_security_group_egress_rule" "lambda_dns_udp_outbound" {
   security_group_id = aws_security_group.lambda.id
   cidr_ipv4         = "${local.vpc_dns_resolver_ip}/32"
@@ -158,6 +194,15 @@ resource "aws_vpc_security_group_ingress_rule" "vpce_from_lambda_https" {
   description                  = "Allow the VPC Lambda function to call the endpoint privately"
 }
 
+resource "aws_vpc_security_group_ingress_rule" "vpce_sqs_from_lambda_https" {
+  security_group_id            = aws_security_group.vpce_sqs.id
+  referenced_security_group_id = aws_security_group.lambda.id
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
+  description                  = "Allow the VPC Lambda function to call SQS privately"
+}
+
 resource "aws_vpc_endpoint" "secrets_manager" {
   vpc_id              = data.aws_vpc.default.id
   service_name        = "com.amazonaws.${var.aws_region}.secretsmanager"
@@ -168,5 +213,29 @@ resource "aws_vpc_endpoint" "secrets_manager" {
 
   tags = {
     Name = "${local.name_prefix}-secretsmanager-vpce"
+  }
+}
+
+resource "aws_vpc_endpoint" "sqs" {
+  vpc_id              = data.aws_vpc.default.id
+  service_name        = "com.amazonaws.${var.aws_region}.sqs"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = local.default_subnet_ids
+  security_group_ids  = [aws_security_group.vpce_sqs.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${local.name_prefix}-sqs-vpce"
+  }
+}
+
+resource "aws_vpc_endpoint" "dynamodb" {
+  vpc_id            = data.aws_vpc.default.id
+  service_name      = "com.amazonaws.${var.aws_region}.dynamodb"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = data.aws_route_tables.default_vpc.ids
+
+  tags = {
+    Name = "${local.name_prefix}-dynamodb-vpce"
   }
 }

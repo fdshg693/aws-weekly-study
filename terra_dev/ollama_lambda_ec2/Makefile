@@ -7,6 +7,8 @@ ENV ?= dev
 REGION ?= ap-northeast-1
 PROMPT ?= こんにちは、自己紹介して
 MODEL ?= qwen2.5:0.5b
+POLL_INTERVAL_SECONDS ?= 5
+MAX_POLLS ?= 24
 TFVARS_FILE := $(ENV).tfvars
 ANSIBLE_DIR := ansible
 ANSIBLE_LIMIT := tag_$(ENV)
@@ -31,7 +33,7 @@ help: ## コマンド一覧を表示
 	@echo "  make apply                    # dev 環境を apply"
 	@echo "  make ansible-image            # Docker 版 Ansible ランナーを build"
 	@echo "  make ansible                  # dev EC2 に Ollama を導入"
-	@echo "  make test                     # API 疎通確認"
+	@echo "  make test                     # 非同期 API の受付と結果取得を確認"
 	@echo "  make up                       # apply -> ansible -> test をまとめて実行"
 	@echo "  make destroy ENV=prod         # prod 環境を削除"
 	@echo ""
@@ -41,6 +43,7 @@ help: ## コマンド一覧を表示
 	@echo ""
 	@echo "API テストの上書き例:"
 	@echo "  make test PROMPT='俳句を1つ作って' MODEL='qwen2.5:0.5b'"
+	@echo "  make test POLL_INTERVAL_SECONDS=3 MAX_POLLS=40"
 
 init: ## Terraform を初期化
 	@echo "🔧 Initializing Terraform..."
@@ -199,19 +202,40 @@ ansible: ansible-install ## EC2 に Ollama を構築
 		cd $(ANSIBLE_DIR) && ANSIBLE_AWS_SSM_BUCKET="$$BUCKET_NAME" ansible-playbook -i inventory.aws_ec2.yml playbook.yml --limit $(ANSIBLE_LIMIT); \
 	fi
 
-test: curl-test ## API 疎通確認を実行
+test: curl-test ## 非同期 API 疎通確認を実行
 
-curl-test: ## API Gateway -> Lambda -> Ollama の疎通確認
-	@echo "🧪 Testing generate API for $(ENV)..."
+curl-test: ## API Gateway -> API Lambda -> SQS -> Worker Lambda -> Ollama の疎通確認
+	@echo "🧪 Testing async generate API for $(ENV)..."
 	@URL=$$(terraform output -raw generate_url) && \
+	STATUS_URL_TEMPLATE=$$(terraform output -raw request_status_url_template) && \
 	SECRET_NAME=$$(terraform output -raw shared_api_secret_name) && \
 	API_KEY=$$(aws secretsmanager get-secret-value --secret-id "$$SECRET_NAME" --region "$(REGION)" --query SecretString --output text) && \
 	REQUEST_BODY=$$(python3 -c 'import json, sys; print(json.dumps({"prompt": sys.argv[1], "model": sys.argv[2]}, ensure_ascii=False))' "$(PROMPT)" "$(MODEL)") && \
 	echo "POST $$URL" && \
-	curl -sS -X POST "$$URL" \
+	SUBMIT_RESPONSE=$$(curl -sS -X POST "$$URL" \
 		-H "content-type: application/json" \
 		-H "x-api-key: $$API_KEY" \
-		-d "$$REQUEST_BODY" | python3 -m json.tool
+		-d "$$REQUEST_BODY") && \
+	echo "$$SUBMIT_RESPONSE" | python3 -m json.tool && \
+	REQUEST_ID=$$(printf '%s' "$$SUBMIT_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["request_id"])') && \
+	STATUS_URL=$$(printf '%s' "$$STATUS_URL_TEMPLATE" | sed "s|{request_id}|$$REQUEST_ID|") && \
+	echo "Polling $$STATUS_URL every $(POLL_INTERVAL_SECONDS)s (max $(MAX_POLLS) tries)..." && \
+	ATTEMPT=1; STATUS_VALUE=""; \
+	while [ $$ATTEMPT -le $(MAX_POLLS) ]; do \
+		STATUS_RESPONSE=$$(curl -sS "$$STATUS_URL" -H "x-api-key: $$API_KEY"); \
+		STATUS_VALUE=$$(printf '%s' "$$STATUS_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status", ""))'); \
+		echo "Attempt $$ATTEMPT: status=$$STATUS_VALUE"; \
+		echo "$$STATUS_RESPONSE" | python3 -m json.tool; \
+		if [ "$$STATUS_VALUE" = "SUCCEEDED" ] || [ "$$STATUS_VALUE" = "FAILED" ]; then \
+			break; \
+		fi; \
+		ATTEMPT=$$((ATTEMPT + 1)); \
+		sleep $(POLL_INTERVAL_SECONDS); \
+	done; \
+	if [ "$$STATUS_VALUE" != "SUCCEEDED" ] && [ "$$STATUS_VALUE" != "FAILED" ]; then \
+		echo "Timed out while waiting for async request completion." >&2; \
+		exit 1; \
+	fi
 
 up: apply ansible curl-test ## 初期構築をまとめて実行
 	@echo "✨ $(ENV) environment is ready."

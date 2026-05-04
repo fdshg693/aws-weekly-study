@@ -24,6 +24,17 @@ data "aws_subnets" "default" {
   }
 }
 
+data "aws_route_tables" "default_vpc" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+data "aws_prefix_list" "dynamodb" {
+  name = "com.amazonaws.${var.aws_region}.dynamodb"
+}
+
 # Amazon Linux 2023 x86_64 AMI
 # ----------------------------
 # We pin only by family and architecture so that the newest AL2023 patch release is
@@ -61,6 +72,6 @@ data "aws_ami" "amazon_linux_2023" {
 
 data "archive_file" "lambda_zip" {
   type        = "zip"
-  source_file = "${path.module}/src/lambda_function.py"
-  output_path = "${path.module}/lambda_function.zip"
+  source_dir  = "${path.module}/src"
+  output_path = "${path.module}/lambda_bundle.zip"
 }
