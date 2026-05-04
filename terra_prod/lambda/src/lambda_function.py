@@ -20,6 +20,7 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 bedrock_runtime = boto3.client("bedrock-runtime")
+LOG_TEXT_PREVIEW_LENGTH = 10
 
 BEDROCK_ERROR_STATUS_CODES = {
     "AccessDeniedException": 403,
@@ -57,6 +58,104 @@ def _response(status_code, payload):
         },
         "body": json.dumps(payload, ensure_ascii=False),
     }
+
+
+def _summarize_text_for_log(text, preview_length=LOG_TEXT_PREVIEW_LENGTH):
+    normalized_text = "" if text is None else str(text)
+    return {
+        "preview": normalized_text[:preview_length],
+        "length": len(normalized_text),
+    }
+
+
+def _log_structured_event(record_type, **payload):
+    logger.info(
+        "%s %s",
+        record_type.upper(),
+        json.dumps(
+            {
+                "record_type": record_type,
+                **payload,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
+    )
+
+
+def _build_log_context(context, request_meta, method):
+    return {
+        "request_id": context.aws_request_id,
+        "method": method,
+        "source": request_meta.get("source"),
+        "raw_path": request_meta.get("raw_path"),
+    }
+
+
+def _log_request_summary(context, request_meta, method, prompt):
+    prompt_summary = _summarize_text_for_log(prompt)
+    _log_structured_event(
+        "request_summary",
+        **_build_log_context(context, request_meta, method),
+        prompt_preview=prompt_summary["preview"],
+        prompt_length=prompt_summary["length"],
+    )
+
+
+def _log_response_summary(
+    context,
+    request_meta,
+    method,
+    status_code,
+    model_id,
+    output_text,
+    stop_reason=None,
+    retry_count=0,
+    usage=None,
+    bedrock_request_id=None,
+):
+    output_summary = _summarize_text_for_log(output_text)
+    _log_structured_event(
+        "response_summary",
+        **_build_log_context(context, request_meta, method),
+        status_code=status_code,
+        model_id=model_id,
+        output_preview=output_summary["preview"],
+        output_length=output_summary["length"],
+        stop_reason=stop_reason,
+        usage=usage or {},
+        bedrock_request_id=bedrock_request_id,
+        retry_count=retry_count,
+    )
+
+
+def _log_error_summary(
+    context,
+    request_meta,
+    method,
+    status_code,
+    error_type,
+    error_code,
+    error_message,
+    model_id,
+    retryable=False,
+    upstream_status_code=None,
+    bedrock_request_id=None,
+):
+    error_summary = _summarize_text_for_log(error_message)
+    _log_structured_event(
+        "error_summary",
+        **_build_log_context(context, request_meta, method),
+        status_code=status_code,
+        error_type=error_type,
+        error_code=error_code,
+        error_message_preview=error_summary["preview"],
+        error_message_length=error_summary["length"],
+        model_id=model_id,
+        retryable=retryable,
+        upstream_status_code=upstream_status_code,
+        bedrock_request_id=bedrock_request_id,
+    )
 
 
 def _extract_request_payload(event):
@@ -119,7 +218,7 @@ def _health_payload(context):
     }
 
 
-def _build_bedrock_error_response(exc, context, model_id):
+def _extract_bedrock_error_details(exc, context, model_id):
     error_response = getattr(exc, "response", {}) or {}
     error = error_response.get("Error", {}) or {}
     metadata = error_response.get("ResponseMetadata", {}) or {}
@@ -133,19 +232,31 @@ def _build_bedrock_error_response(exc, context, model_id):
     else:
         status_code = BEDROCK_ERROR_STATUS_CODES.get(error_code, 502)
 
-    return _response(
-        status_code,
-        {
+    retryable = error_code in RETRYABLE_BEDROCK_ERROR_CODES or status_code in {429, 502, 503, 504}
+
+    return {
+        "status_code": status_code,
+        "error_code": error_code,
+        "error_message": error_message,
+        "upstream_status_code": upstream_status_code,
+        "retryable": retryable,
+        "bedrock_request_id": metadata.get("RequestId"),
+        "response_payload": {
             "error": "Bedrock request failed",
             "bedrock_error_code": error_code,
             "bedrock_error_message": error_message,
             "upstream_status_code": upstream_status_code,
-            "retryable": error_code in RETRYABLE_BEDROCK_ERROR_CODES or status_code in {429, 502, 503, 504},
+            "retryable": retryable,
             "request_id": context.aws_request_id,
             "bedrock_request_id": metadata.get("RequestId"),
             "model_id": model_id,
         },
-    )
+    }
+
+
+def _build_bedrock_error_response(exc, context, model_id):
+    error_details = _extract_bedrock_error_details(exc, context, model_id)
+    return _response(error_details["status_code"], error_details["response_payload"]), error_details
 
 
 def _is_retryable_client_error(exc):
@@ -227,16 +338,41 @@ def lambda_handler(event, context):
 
     logger.info("Lambda invoked in %s for app %s", environment, app_name)
     logger.info("Request ID: %s", context.aws_request_id)
-    logger.debug("Received event: %s", json.dumps(event, ensure_ascii=False))
 
     request_payload, request_meta = _extract_request_payload(event)
     method = request_meta.get("method", "GET").upper()
+    prompt = str(request_payload.get("prompt") or request_payload.get("message") or "").strip()
+
+    _log_request_summary(
+        context=context,
+        request_meta=request_meta,
+        method=method,
+        prompt=prompt,
+    )
 
     if method == "GET":
-        return _response(200, _health_payload(context))
+        health_payload = _health_payload(context)
+        _log_response_summary(
+            context=context,
+            request_meta=request_meta,
+            method=method,
+            status_code=200,
+            model_id=model_id,
+            output_text="",
+        )
+        return _response(200, health_payload)
 
-    prompt = str(request_payload.get("prompt") or request_payload.get("message") or "").strip()
     if not prompt:
+        _log_error_summary(
+            context=context,
+            request_meta=request_meta,
+            method=method,
+            status_code=400,
+            error_type="validation_error",
+            error_code="MissingPrompt",
+            error_message="prompt is required",
+            model_id=model_id,
+        )
         return _response(
             400,
             {
@@ -255,9 +391,34 @@ def lambda_handler(event, context):
         )
     except ClientError as exc:
         logger.exception("Bedrock returned a client error: %s", exc)
-        return _build_bedrock_error_response(exc, context, model_id)
+        error_response, error_details = _build_bedrock_error_response(exc, context, model_id)
+        _log_error_summary(
+            context=context,
+            request_meta=request_meta,
+            method=method,
+            status_code=error_details["status_code"],
+            error_type="bedrock_client_error",
+            error_code=error_details["error_code"],
+            error_message=error_details["error_message"],
+            model_id=model_id,
+            retryable=error_details["retryable"],
+            upstream_status_code=error_details["upstream_status_code"],
+            bedrock_request_id=error_details["bedrock_request_id"],
+        )
+        return error_response
     except BotoCoreError as exc:
         logger.exception("Failed to invoke Bedrock model: %s", exc)
+        _log_error_summary(
+            context=context,
+            request_meta=request_meta,
+            method=method,
+            status_code=502,
+            error_type="bedrock_sdk_error",
+            error_code=exc.__class__.__name__,
+            error_message=str(exc),
+            model_id=model_id,
+            retryable=True,
+        )
         return _response(
             502,
             {
@@ -286,5 +447,17 @@ def lambda_handler(event, context):
         "request": request_meta,
     }
 
+    _log_response_summary(
+        context=context,
+        request_meta=request_meta,
+        method=method,
+        status_code=200,
+        model_id=model_id,
+        output_text=output_text,
+        stop_reason=bedrock_response.get("stopReason"),
+        retry_count=retry_count,
+        usage=bedrock_response.get("usage", {}),
+        bedrock_request_id=((bedrock_response.get("ResponseMetadata") or {}).get("RequestId")),
+    )
     logger.info("Bedrock response prepared successfully")
     return _response(200, response_data)

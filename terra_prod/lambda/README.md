@@ -54,6 +54,7 @@ Secrets Manager
 - **CORS Origin は変数化**: `cors_allow_origins` で localhost や必要なフロントエンド Origin を明示許可できます。
 - **ルート別スロットリング**: `GET /` は秒10、`POST /` は秒4をデフォルトにしています。
 - **Bedrock エラーを透過**: Lambda が Bedrock の 429 / 503 などを検知し、構造化した JSON でクライアントへ返します。
+- **リクエストログは要約のみ**: Prompt / AI 応答は全文ではなく、先頭10文字と全体文字数だけを CloudWatch Logs に記録します。
 
 ## 構成ファイル
 - `lambda.tf` - Lambda / Secrets Manager / Rotation 定義
@@ -67,6 +68,8 @@ Secrets Manager
 - `src/lambda_function.py` - Bedrock 呼び出し本体
 - `src/authorizer.py` - `x-api-key` 検証
 - `src/rotation_lambda.py` - API キーローテーション
+- `analyze_request_logs.py` - CloudWatch Logs の要約ログを集計する本体スクリプト
+- `analyze_request_logs.sh` - 上記 Python 集計スクリプトを呼ぶ薄いラッパー
 - `test_api.sh` - 認証失敗 / 成功系の疎通確認
 - `k6_api_test.js` - 認証付き GET / POST の負荷試験
 
@@ -225,6 +228,53 @@ k6 run ./k6_api_test.js
 - 標準出力ログ: `logs/k6-load-test-YYYYMMDD-HHMMSS.log`
 - サマリーJSON: `logs/k6-load-test-YYYYMMDD-HHMMSS-summary.json`
 
+## CloudWatch Logs の要約集計
+
+`src/lambda_function.py` は CloudWatch Logs に以下の要約ログを出します。
+
+- `REQUEST_SUMMARY` - Prompt の先頭10文字と全体文字数
+- `RESPONSE_SUMMARY` - AI 応答の先頭10文字と全体文字数
+- `ERROR_SUMMARY` - エラー種別・HTTP ステータス・短いエラー要約
+
+そのうえで `analyze_request_logs.sh` を使うと、指定範囲のリクエストについて以下をまとめて確認できます。
+
+- 対象リクエスト数
+- エラー件数
+- そのうち `429` / `ThrottlingException` / `TooManyRequestsException` による件数
+- `stop_reason=max_tokens` によるモデル回答打ち切り件数
+
+### 直近1時間を集計
+```bash
+make analyze-request-logs ENV=dev
+```
+
+### 30分だけ見る
+```bash
+SINCE=30m make analyze-request-logs ENV=dev
+```
+
+### 開始・終了時刻を明示
+```bash
+START_TIME=2026-05-05T00:00:00Z \
+END_TIME=2026-05-05T01:00:00Z \
+make analyze-request-logs ENV=prod
+```
+
+### GET / POST を切り替える
+```bash
+METHOD=GET make analyze-request-logs ENV=dev
+METHOD=ALL make analyze-request-logs ENV=dev
+```
+
+### Terraform output を使わず直接指定
+```bash
+LOG_GROUP_NAME=/aws/lambda/development-simple-lambda-function \
+AWS_REGION=ap-northeast-1 \
+SINCE=15m \
+METHOD=POST \
+bash ./analyze_request_logs.sh
+```
+
 ## 主要変数
 - `bedrock_model_id` - 呼び出す Bedrock モデル ID
 - `bedrock_max_tokens` - 最大生成トークン数
@@ -242,5 +292,6 @@ k6 run ./k6_api_test.js
 - API Gateway URL は `terraform output -raw api_invoke_url` で確認できます
 - API キーの取得元は Secrets Manager です
 - ローテーション直後は、取得済みの古い API キーでは認証に失敗します
+- Lambda コード更新後は `terraform apply` しないと、新しい要約ログ形式は反映されません
 - Bedrock POST を伴う負荷試験はコストに注意してください
 - Bedrock 側でスロットリングや一時障害が起きた場合、API は `429` / `503` などの上流ステータスとエラーコードを JSON で返します

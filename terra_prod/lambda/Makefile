@@ -2,8 +2,12 @@ ENV ?= dev
 API_URL ?=
 API_KEY ?=
 PROMPT ?= 2 + 3
+METHOD ?= POST
+SINCE ?= 1h
 STAGE_COUNT ?= 3
 STAGE_DURATION ?= 30s
+# 8080が使用中の場合は、別のポートを指定して `make demo-app-up` を実行してください。
+# CORSで許可しているポートにする必要があります。
 DEMO_APP_PORT ?= 8080
 
 DEMO_APP_DIR := $(CURDIR)/demo-app
@@ -17,7 +21,7 @@ TFVARS_dev := dev.tfvars
 TFVARS_prod := prod.tfvars
 TFVARS := $(TFVARS_$(ENV))
 
-.PHONY: check-env help init fmt validate plan apply destroy output get-api-key rotate-secret test load-test demo-app-up demo-app-down
+.PHONY: check-env help init fmt validate plan apply destroy output get-api-key rotate-secret test load-test analyze-request-logs demo-app-up demo-app-down
 
 check-env:
 	@if [ -z "$(TFVARS)" ]; then \
@@ -40,6 +44,7 @@ help:
 	@echo "  rotate-secret Trigger immediate API key rotation"
 	@echo "  test      Test deployed API Gateway endpoint"
 	@echo "  load-test Run k6 load test for GET/POST API Gateway endpoint and save logs"
+	@echo "  analyze-request-logs Aggregate Lambda request/error logs from CloudWatch Logs"
 	@echo "  demo-app-up   Serve demo-app via local nginx on http://localhost:8080"
 	@echo "  demo-app-down Stop the local demo-app nginx process"
 	@echo ""
@@ -57,6 +62,14 @@ help:
 	@echo "  LOG_THROTTLED_RESPONSES=true            Sample a few 429 warnings in k6 output"
 	@echo "  API_URL=<url>         Override terraform output api_invoke_url"
 	@echo "  API_KEY=<key>         Override Secrets Manager lookup result"
+	@echo ""
+	@echo "analyze-request-logs options:"
+	@echo "  START_TIME=<iso8601>  Start time, e.g. 2026-05-05T00:00:00Z"
+	@echo "  END_TIME=<iso8601>    End time, default: now"
+	@echo "  SINCE=<relative>      Relative window if START_TIME is omitted, e.g. 15m, 1h (default: $(SINCE))"
+	@echo "  METHOD=POST|GET|ALL   Filter by HTTP method (default: $(METHOD))"
+	@echo "  LOG_GROUP_NAME=<name> Override terraform output log_group_name"
+	@echo "  AWS_REGION=<region>   Override terraform output deployment_summary.region"
 	@echo "  DEMO_APP_PORT=<port>  Local nginx port for demo-app (default: $(DEMO_APP_PORT))"
 
 init: check-env
@@ -133,6 +146,10 @@ load-test: check-env
 	echo "Running load test with STAGE_COUNT=$(STAGE_COUNT), STAGE_DURATION=$(STAGE_DURATION)"; \
 	API_URL="$$API_URL_VALUE" API_KEY="$$API_KEY_VALUE" PROMPT="$(PROMPT)" STAGE_COUNT="$(STAGE_COUNT)" STAGE_DURATION="$(STAGE_DURATION)" THROTTLED_RATE_THRESHOLD="$(THROTTLED_RATE_THRESHOLD)" UNEXPECTED_FAILURE_RATE_THRESHOLD="$(UNEXPECTED_FAILURE_RATE_THRESHOLD)" LOG_THROTTLED_RESPONSES="$(LOG_THROTTLED_RESPONSES)" \
 	k6 run --summary-export "$$SUMMARY_JSON" ./k6_api_test.js 2>&1 | tee "$$STDOUT_LOG"
+
+analyze-request-logs:
+	@START_TIME="$(START_TIME)" END_TIME="$(END_TIME)" SINCE="$(SINCE)" METHOD="$(METHOD)" LOG_GROUP_NAME="$(LOG_GROUP_NAME)" AWS_REGION="$(AWS_REGION)" \
+		bash ./analyze_request_logs.sh
 
 demo-app-up:
 	@if ! command -v nginx >/dev/null 2>&1; then \
