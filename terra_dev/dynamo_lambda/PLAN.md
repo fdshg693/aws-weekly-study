@@ -59,8 +59,8 @@ DynamoDB テーブル
 
 内部管理用属性:
 
-- `gsi1pk`: 一覧取得用 GSI のパーティションキー（固定値 `PROMPT` を想定）
-- `gsi1sk`: 一覧取得用 GSI のソートキー（例: `2026-05-09T10:00:00Z#<id>`）
+- `access_pk`: 一覧・検索用の共通 GSI パーティションキー（例: `PROMPT`）
+- `access_sk`: 一覧・検索用の共通 GSI ソートキー（例: `2026-05-09T10:00:00Z#<id>`）
 
 ### タグ検索用インデックスアイテム
 
@@ -77,10 +77,11 @@ DynamoDB テーブル
 - `updated_at`: 必要に応じて複製する更新日時
 - `name`: 一覧表示に必要なら複製するプロンプト名
 - `description`: 一覧表示に必要なら複製する説明
+- `tags`: 一覧表示のレスポンスを揃えるために複製するタグ一覧
 - `target_model`: 一覧表示に必要なら複製する対象モデル
 - `is_active`: 一覧表示に必要なら複製する有効フラグ
-- `gsi2pk`: タグ検索用 GSI のパーティションキー（例: `TAG#summary`）
-- `gsi2sk`: タグ検索用 GSI のソートキー（例: `2026-05-09T10:00:00Z#<prompt_id>`）
+- `access_pk`: 一覧・検索用の共通 GSI パーティションキー（例: `TAG#summary`）
+- `access_sk`: 一覧・検索用の共通 GSI ソートキー（例: `2026-05-09T10:00:00Z#<prompt_id>`）
 
 最初はシンプルな CRUD に集中し、履歴管理やレビュー承認フローはスコープ外とする。
 
@@ -97,12 +98,12 @@ DynamoDB テーブル
 
 ページング方針:
 
-- `tag` 未指定時は一覧取得用 GSI (`gsi1`) に対して `Query` + `Limit` + `ExclusiveStartKey` を使う
-- `tag` 指定時はタグ検索用 GSI (`gsi2`) に対して `Query` + `Limit` + `ExclusiveStartKey` を使う
+- `tag` 未指定時は共通 GSI に対して `access_pk = "PROMPT"` を指定して `Query` + `Limit` + `ExclusiveStartKey` を使う
+- `tag` 指定時は同じ共通 GSI に対して `access_pk = "TAG#<tag>"` を指定して `Query` + `Limit` + `ExclusiveStartKey` を使う
 - レスポンスには `items` と `next_token` を含め、`next_token` が存在する間だけ次ページを取得可能にする
 - `next_token` は DynamoDB の `LastEvaluatedKey` をそのまま返すのではなく、JSON化して Base64 エンコードした文字列として扱う
 - これにより API 利用者は offset ベースではなく cursor ベースでページを進める
-- 並び順は `gsi1sk` または `gsi2sk` により時系列で制御し、必要に応じて新しい順で返せるように `ScanIndexForward = false` を利用する
+- 並び順は `access_sk` により時系列で制御し、必要に応じて新しい順で返せるように `ScanIndexForward = false` を利用する
 
 レスポンス例:
 
@@ -123,10 +124,10 @@ DynamoDB テーブル
 
 - この構成では `GET /prompts/{id}` は高速に `GetItem` できる
 - `GET /prompts` は主テーブルではなく GSI を `Query` するため、`Scan` より効率よく一覧取得できる
-- `GET /prompts` で使う `gsi1pk = "PROMPT"` は API 利用者から受け取る値ではなく、Lambda 内部で固定値として指定する
-- `GET /prompts?tag=summary` でも `FilterExpression` ではなくタグ検索用 GSI を使うことで、タグ絞り込みをアクセスパターンとして表現できる
+- `GET /prompts` で使う `access_pk = "PROMPT"` は API 利用者から受け取る値ではなく、Lambda 内部で固定値として指定する
+- `GET /prompts?tag=summary` でも `FilterExpression` ではなく、同じ GSI に対して `access_pk = "TAG#summary"` を指定することでタグ絞り込みをアクセスパターンとして表現できる
 - DynamoDB はRDBのような自由検索ではないため、「どの一覧をどう並べて取りたいか」を先にキー設計へ落とし込む必要がある
-- 今回は「全件一覧を時系列でページング取得する」「タグごとに一覧を時系列でページング取得する」という 2 つのアクセスパターンを GSI に明示的に持たせる
+- 今回は「全件一覧を時系列でページング取得する」「タグごとに一覧を時系列でページング取得する」という 2 つのアクセスパターンを、1 つの GSI 上で `access_pk` の値を切り替えて表現する
 
 ### `GET /prompts/{id}`
 
@@ -186,30 +187,30 @@ dynamo_lambda/
 - `dynamodb.tf` で以下を定義:
   - テーブル名: `${project_name}-prompts-${environment}`
   - パーティションキー: `id` (String)
-  - 一覧取得用 GSI: `gsi1pk` (String) + `gsi1sk` (String)
-  - タグ検索用 GSI: `gsi2pk` (String) + `gsi2sk` (String)
+  - 共通 GSI: `access_pk` (String) + `access_sk` (String)
   - 課金モード: `PAY_PER_REQUEST`
   - TTL設定: 不要
 
 補足:
 
 - `id` パーティションキーは「ID指定の単体取得」に使い、一覧取得は GSI に分離する
-- `gsi1pk` には全件共通の固定値 `PROMPT` を入れ、`gsi1sk` に `created_at#id` を保存して時系列一覧を実現する
-- `gsi1` には一覧表示に必要なサマリ属性のみを投影し、サイズの大きい `prompt_text` は含めない
-- タグ検索は `tags` 配列そのものをキーにせず、タグごとの索引アイテムに `gsi2pk = TAG#<tag>` を持たせて実現する
+- `access_pk` にはアクセスパターンを表す値を入れ、全件一覧では `PROMPT`、タグ一覧では `TAG#<tag>` を使い分ける
+- `access_sk` には `created_at#id` を保存し、どちらの一覧でも同じ並びルールで時系列取得できるようにする
+- 共通 GSI には一覧表示に必要なサマリ属性のみを投影し、サイズの大きい `prompt_text` は含めない
+- タグ検索は `tags` 配列そのものをキーにせず、タグごとの索引アイテムに `access_pk = TAG#<tag>` を持たせて実現する
 - これにより、`GET /prompts?tag=summary` でも `Query` ベースでページングでき、`FilterExpression` による後段フィルタを避けられる
 - これにより `GET /prompts` は `Query` ベースでページングでき、全件走査ベースの `Scan` を避けられる
-- `Prompt` 本体と `PROMPT_TAG` 索引アイテムを同一テーブルに保存し、アクセスパターンごとに GSI を使い分ける
-- 将来的に active のみの一覧や target_model ごとの一覧が必要になれば、別 GSI または別索引アイテムを追加検討する
+- `Prompt` 本体と `PROMPT_TAG` 索引アイテムを同一テーブルに保存し、同じ GSI 上でアクセスパターンごとに `access_pk` を切り替えて使い分ける
+- 将来的に active のみの一覧や target_model ごとの一覧が必要になれば、同じ GSI 上で `ACTIVE#true` や `MODEL#gpt-4.1` のような追加のアクセスパターンを検討できる
 
 一覧取得の実装イメージ:
 
 - 主テーブル: `id = <uuid>`
-- GSI: `gsi1pk = "PROMPT"`, `gsi1sk = "2026-05-09T10:00:00Z#<id>"`
-- `Query(IndexName="gsi1", KeyConditionExpression="gsi1pk = :pk")` のように、Lambda 内部で `:pk = "PROMPT"` を固定指定して一覧取得する
-- タグ索引アイテム: `id = "PROMPT_TAG#summary#<id>"`, `gsi2pk = "TAG#summary"`, `gsi2sk = "2026-05-09T10:00:00Z#<id>"`
-- `Query(IndexName="gsi2", KeyConditionExpression="gsi2pk = :pk")` のようにタグ別一覧取得する
-- 実運用で「active のみ取得」など別軸の一覧が増える場合は、アクセスパターンごとに GSI または索引アイテムを追加する
+- Prompt本体アイテムの共通 GSI 属性: `access_pk = "PROMPT"`, `access_sk = "2026-05-09T10:00:00Z#<id>"`
+- `Query(IndexName="access_pattern_index", KeyConditionExpression="access_pk = :pk")` のように、Lambda 内部で `:pk = "PROMPT"` を固定指定して一覧取得する
+- タグ索引アイテム: `id = "PROMPT_TAG#summary#<id>"`, `access_pk = "TAG#summary"`, `access_sk = "2026-05-09T10:00:00Z#<id>"`
+- `Query(IndexName="access_pattern_index", KeyConditionExpression="access_pk = :pk")` のように、タグ別一覧では `:pk = "TAG#summary"` を指定して取得する
+- 実運用で「active のみ取得」など別軸の一覧が増える場合は、同じ GSI を使いながらアクセスパターン用の値や索引アイテムを追加する
 
 ### Step 3: Lambda関数
 
@@ -217,8 +218,8 @@ dynamo_lambda/
   - API Gateway プロキシ統合に対応したリクエスト/レスポンス形式
   - `httpMethod` と `resource` または `pathParameters` でルーティング
   - boto3 で DynamoDB を操作
-  - `POST /prompts` では Prompt本体アイテムの `gsi1pk`, `gsi1sk` を保存し、あわせてタグ索引アイテム (`gsi2pk`, `gsi2sk`) も作成する
-  - `GET /prompts` では `limit`, `next_token`, `tag` を受け取り、`tag` 未指定時は Lambda 内部で `gsi1pk = "PROMPT"` を固定指定して `gsi1` を `Query` し、`tag` 指定時は `gsi2pk = "TAG#<tag>"` で `gsi2` を `Query` する
+  - `POST /prompts` では Prompt本体アイテムの `access_pk`, `access_sk` を保存し、あわせてタグ索引アイテムの `access_pk = "TAG#<tag>"`, `access_sk` も作成する
+  - `GET /prompts` では `limit`, `next_token`, `tag` を受け取り、`tag` 未指定時は Lambda 内部で `access_pk = "PROMPT"` を固定指定し、`tag` 指定時は `access_pk = "TAG#<tag>"` を指定して、同じ共通 GSI を `Query` する
   - `LastEvaluatedKey` があれば `next_token` に変換して返す
   - 一覧APIではサマリ属性のみを返し、`prompt_text` は個別取得APIで返す
   - `PUT /prompts/{id}` では Prompt本体アイテムを更新し、タグ変更があればタグ索引アイテムも同期する
@@ -286,7 +287,7 @@ curl "$API_URL/prompts?tag=summary"
 3. **ドメインを意識した API 設計**: `/items` ではなく `/prompts` として意味のあるリソース名にする
 4. **IAM最小権限**: 必要な操作・リソースのみに限定したポリシー設計
 5. **サーバーレスパターン**: API Gateway → Lambda → DynamoDB の王道構成
-6. **アクセスパターン駆動の設計**: `FilterExpression` に頼らず、全件一覧とタグ一覧を別インデックスで表現する考え方
+6. **アクセスパターン駆動の設計**: `FilterExpression` に頼らず、全件一覧とタグ一覧を 1 つの共通 GSI 上で表現する考え方
 
 ## 注意事項
 
@@ -295,9 +296,9 @@ curl "$API_URL/prompts?tag=summary"
 - Lambda関数のコールドスタートに注意（Python は比較的軽量）
 - GSI は一覧取得を効率化できる一方、書き込み時には GSI 分の更新コストと整合性を考慮する
 - `FilterExpression` を後から足しても読み取り量は減らないため、必要な一覧・検索条件はキー設計または GSI で解決する前提で考える
-- `created_at` を `gsi1sk` に使う場合、同時刻衝突を避けるため `created_at#id` のように一意性を持たせると安全
+- `created_at` を `access_sk` に使う場合、同時刻衝突を避けるため `created_at#id` のように一意性を持たせると安全
 - `tags` は複数値属性なので、そのまま単純に 1 つの GSI キーへ載せるのではなく、タグごとの索引アイテムを持つ設計にした方が扱いやすい
 - タグ索引アイテムに一覧用属性を複製する場合は、更新漏れを防ぐために書き込み処理の責務を明確にする
-- もし `GET /prompts` で毎回 `prompt_text` を含む完全データを返したい要件なら、`gsi1` のメリットは薄くなるため、主テーブル `Scan` に寄せる簡易設計も選択肢になる
+- もし `GET /prompts` で毎回 `prompt_text` を含む完全データを返したい要件なら、共通 GSI にサマリ投影を持つメリットは薄くなるため、主テーブル `Scan` に寄せる簡易設計も選択肢になる
 - API Gateway のステージ変数や高度なスロットリング設定は今回はスコープ外とする
 - Prompt 本文には機密情報を直接埋め込まない方針とし、シークレットや固定資格情報は別管理にする
